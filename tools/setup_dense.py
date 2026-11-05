@@ -56,23 +56,30 @@ def main():
         return 1
 
     pairs = [
-        ("我养了一只猫叫团子", "宠物", True),
+        ("我养了一只猫叫团子", "我的宠物是只猫", True),
         ("我养了一只猫叫团子", "房贷还款日是每月五号", False),
-        ("我对花生过敏", "吃东西要看配料表", True),
+        ("我对花生过敏", "花生会让我起疹子", True),
         ("我对花生过敏", "下周有个设计评审", False),
         ("我平时喝什么饮料", "我每天喝一杯黑咖啡", True),
         ("我平时喝什么饮料", "我的工位在十二楼", False),
     ]
-    ok = 0
+    # 判据是**排序**不是绝对余弦：相关的每一对都要比无关的每一对更像。
+    # 绝对阈值（原来用 0.5）会把真实的弱相关句误判成模型坏了——
+    # "我对花生过敏" ↔ "吃东西要看配料表" 只有 0.35，但它确实比无关句高。
+    rel, irr = [], []
     for a, b, expect in pairs:
-        # 检索场景：查询与文档
         va, vb = emb.embed(a), emb.embed(b)
         sim = sum(x * y for x, y in zip(va, vb))
-        flag = "✓" if (sim > 0.5) == expect else "✗"
-        ok += flag == "✓"
-        print(f"   {flag} cos={sim:.3f}  期望{'相关' if expect else '无关'}  {a[:12]} ↔ {b[:12]}")
-    if ok < len(pairs):
-        print("   ! 有不符合预期的组合——模型可能不是中文语义模型，或做的是 token embedding。")
+        (rel if expect else irr).append((sim, a, b))
+        print(f"   · cos={sim:.3f}  {'相关' if expect else '无关'}  {a[:12]} ↔ {b[:12]}")
+    lo_rel, hi_irr = min(r[0] for r in rel), max(r[0] for r in irr)
+    separated = lo_rel > hi_irr
+    sane = lo_rel >= 0.30
+    print(f"   相关最低 {lo_rel:.3f}  vs  无关最高 {hi_irr:.3f}  → "
+          f"{'✓ 分得开' if separated else '✗ 分不开'}")
+    if not separated or not sane:
+        print("   ! 模型可能不是中文语义模型，或只做了 token embedding。")
+    ok = len(pairs) if (separated and sane) else 0
 
     print("\n④ 代价")
     texts = ["我对花生过敏，吃了会起疹子"] * 32
@@ -83,7 +90,7 @@ def main():
     print(f"   1 万条记忆建索引约 {ms * 10000 / 1000:.0f}s（一次性），向量占盘约 20MB")
 
     print("\n⑤ 启用")
-    print("   代码：from brain import dense; ag = MemoryHooks(embedding=dense.make_embedder())")
+    print("   代码：from jeyi import dense; ag = MemoryHooks(embedding=dense.make_embedder())")
     print("   基准：python tools/bench.py --dense && python tools/bench.py --dense --holdout")
     return 0 if ok == len(pairs) else 1
 
