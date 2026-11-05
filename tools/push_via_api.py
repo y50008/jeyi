@@ -94,10 +94,18 @@ def main():
     ap.add_argument("--repo", required=True, help="owner/name")
     ap.add_argument("--branch", default="main")
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--since", default=None,
+                    help="只推这个本地提交之后的新提交（接在远端当前 HEAD 上）")
     a = ap.parse_args()
     owner, name = a.repo.split("/", 1)
 
     commits = sh("git", "rev-list", "--reverse", "HEAD").split()
+    if a.since:
+        full = sh("git", "rev-list", "HEAD").split()
+        if a.since in full:
+            commits = commits[commits.index(a.since) + 1:]
+        else:
+            raise SystemExit(f"--since {a.since} 不在本地历史里")
     print(f"本地 {len(commits)} 个提交，目标 {a.repo}:{a.branch}")
     if a.dry:
         prev = {}
@@ -117,6 +125,13 @@ def main():
 
     blob_cache: dict[str, str] = {}          # 本地 blob sha → 远端 blob sha
     prev_local, prev_remote, prev_tree = {}, None, None
+    if a.since:
+        # 接在远端 HEAD 上：把 since 提交的树当作"上一状态"
+        prev_local = ls_tree(a.since)
+        head = gh.call("GET", f"/repos/{owner}/{name}/git/ref/heads/{a.branch}")
+        prev_remote = head["object"]["sha"]
+        prev_tree = gh.call("GET", f"/repos/{owner}/{name}/git/commits/{prev_remote}")["tree"]["sha"]
+        print(f"接在远端 {prev_remote[:8]} 之后，追加 {len(commits)} 个提交")
     for idx, c in enumerate(commits, 1):
         cur = ls_tree(c)
         entries = []
@@ -151,7 +166,6 @@ def main():
         print(f"  [{idx}/{len(commits)}] {c[:8]} -> {commit['sha'][:8]}  "
               f"+{len(entries)} 项")
 
-    gh.call("PATCH", f"/repos/{owner}/{name}", {"default_branch": a.branch})
     try:
         gh.call("POST", f"/repos/{owner}/{name}/git/refs",
                 {"ref": f"refs/heads/{a.branch}", "sha": prev_remote})
@@ -160,6 +174,10 @@ def main():
         gh.call("PATCH", f"/repos/{owner}/{name}/git/refs/heads/{a.branch}",
                 {"sha": prev_remote, "force": True})
         print(f"已更新 {a.branch} -> {prev_remote[:8]}")
+    try:
+        gh.call("PATCH", f"/repos/{owner}/{name}", {"default_branch": a.branch})
+    except SystemExit:
+        pass
     print(f"完成：https://github.com/{a.repo}")
     return 0
 
