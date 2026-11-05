@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# 运行时数据（记忆库属于个人数据，不进仓库）
+data/
+*.db
+*.db-wal
+*.db-shm
+events.jsonl
+events.jsonl.migrated
+live_cards.json
+full_cards.jsonl
+
+# 导出产物（可用 tools/export_map.py 重新生成）
+ui/brain_map_live.html
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

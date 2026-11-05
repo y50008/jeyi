@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>记忆脑图 · v4.0 全图底座</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#050810;
+    font-family:"SF Mono","Cascadia Code",Consolas,"Microsoft YaHei",monospace; color:#cdd6e4; }
+  #cv { position:absolute; inset:0; }
+  header { position:absolute; top:0; left:0; right:0; padding:10px 16px; display:flex;
+    gap:10px; align-items:center; background:linear-gradient(#050810ee,#05081000); z-index:5; }
+  header h1 { font-size:15px; letter-spacing:2px; color:#fff; }
+  header small { color:#5b6b83; font-size:10px; letter-spacing:1px; }
+  #q { flex:1; max-width:340px; background:#0d1522; border:1px solid #1f2d42; color:#dfe8f5;
+    padding:7px 12px; border-radius:6px; font-size:12px; outline:none; }
+  #q:focus { border-color:#4cc9f0; }
+  button { background:#12203a; color:#9fc2e8; border:1px solid #243b5e; padding:6px 12px;
+    border-radius:6px; font-size:12px; cursor:pointer; }
+  button:hover { background:#1a2f52; color:#fff; }
+  label.ck { font-size:11px; color:#7b8aa0; display:flex; gap:4px; align-items:center; }
+  #panel { position:absolute; top:52px; right:0; width:340px; bottom:64px; overflow-y:auto;
+    background:#070d18f2; border-left:1px solid #16233a; padding:14px; z-index:4; }
+  #panel h2 { font-size:14px; color:#fff; margin-bottom:2px; }
+  .tag { display:inline-block; font-size:10px; padding:2px 8px; border-radius:10px; margin:2px 4px 2px 0; }
+  .sec { margin-top:12px; border-top:1px dashed #1c2b45; padding-top:10px; }
+  .sec h3 { font-size:11px; color:#5f7ba3; letter-spacing:2px; margin-bottom:6px; }
+  .sec p, .sec li { font-size:12px; line-height:1.7; color:#b9c6da; }
+  .vb { background:#101b2e; border-left:3px solid #ffd166; padding:6px 10px; margin:6px 0;
+    font-size:12px; color:#ffe9b0; border-radius:0 6px 6px 0; }
+  .feel { background:#161226; border-left:3px solid #ff70a6; padding:6px 10px; margin:6px 0;
+    font-size:12px; color:#ffc2d8; border-radius:0 6px 6px 0; }
+  .src { font-size:11px; color:#55647c; }
+  .peeldots { display:flex; gap:6px; margin:8px 0; }
+  .peeldot { width:26px; height:5px; border-radius:3px; background:#1c2b45; }
+  .peeldot.on { background:#4cc9f0; box-shadow:0 0 8px #4cc9f0; }
+  #peelBtn { margin-top:8px; width:100%; }
+  .bar { height:12px; border-radius:3px; overflow:hidden; display:flex; margin:4px 0 8px; }
+  .bar div { height:100%; }
+  .resrow { margin-bottom:8px; }
+  .resrow .rl { font-size:12px; color:#dfe8f5; display:flex; justify-content:space-between; }
+  #status { position:absolute; left:0; right:0; bottom:0; height:64px; display:flex;
+    align-items:center; gap:18px; padding:0 16px; background:#050810f2; border-top:1px solid #16233a;
+    font-size:11px; color:#7b8aa0; z-index:4; }
+  #status b { color:#4cc9f0; font-size:14px; }
+  #sess { display:flex; gap:8px; margin-left:auto; }
+  .chip { padding:4px 12px; border-radius:14px; border:1px solid #243b5e; cursor:pointer; font-size:11px; }
+  .chip.on { background:#12325c; color:#fff; border-color:#4cc9f0; }
+  #legend { position:absolute; right:356px; bottom:72px; font-size:10px; color:#5b6b83;
+    background:#070d18cc; padding:8px 10px; border-radius:8px; line-height:1.9; z-index:3; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; }
+  #toast { position:absolute; top:56px; left:50%; transform:translateX(-50%); background:#0d1b30ee;
+    border:1px solid #2b4a77; padding:10px 18px; border-radius:8px; font-size:12px; color:#a8d0ff;
+    display:none; z-index:9; white-space:pre-line; }
+  #vig { position:absolute; inset:0; pointer-events:none; z-index:2;
+    background:radial-gradient(ellipse at center, transparent 55%, #000000aa 100%); }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas><div id="vig"></div>
+<header>
+  <h1>记忆脑图</h1><small>v4.0 · 全图底座 + 动力学 · <span id="srcBadge">内置样例数据</span></small>
+  <input id="q" placeholder="检索演示：试试「遗忘」/「结算」/「超越」…">
+  <button onclick="runQuery()">检索</button>
+  <button onclick="settle()">结算</button>
+  <label class="ck"><input type="checkbox" checked onchange="filterSlices()"> 工作记忆</label>
+  <label class="ck"><input type="checkbox" checked onchange="filterSlices()"> 活跃</label>
+  <label class="ck"><input type="checkbox" checked onchange="filterSlices()"> 归档</label>
+</header>
+<div id="panel"><p style="color:#5b6b83;font-size:12px;margin-top:30px;text-align:center">点击节点开始抽丝剥茧<br>双击空白重置</p></div>
+<div id="legend"></div>
+<div id="status">
+  <span>记忆字符 <b id="stTok">0</b></span>
+  <span>节点 <b id="stN">0</b></span>
+  <span>压缩比 <b id="stE">0</b></span>
+  <span>归档率 <b id="stA">0%</b></span>
+  <div id="sess"></div>
+</div>
+<div id="toast"></div>
+<script>
+"use strict";
+const SESS_SAMPLE=[{id:"S1",label:"切片 · 架构之夜 21:42"},{id:"S2",label:"切片 · 检索与交付 22:49"}];
+const N_SAMPLE=[
+{id:"v1",label:"v1 构想",type:"lesson",slice:"active",imp:.95,sess:"S1",gist:"细节在末梢、向上是轮廓、再向上是事件；没有真正的遗忘，也没有不遗忘。",vb:["细节在末梢，向上一次轮廓，在向上是事件。"],feel:{label:"兴奋",why:"像找到了知音",valid_at:"2026-11-04"},src:["用户原话"]},
+{id:"l1",label:"三层架构 v1",type:"event",slice:"archive",imp:.5,sess:"S1",gist:"L3事件 / L2轮廓 / L1细节 / L0冷存储；遗忘 = 激活度衰减。",vb:[],feel:null,src:["v2 规范"]},
+{id:"v2",label:"v2 工程规范",type:"event",slice:"active",imp:.8,sess:"S1",gist:"写入税、类型分流衰减、冲突不静默、quarantine、指标闭环。",vb:[],feel:null,src:["memory-architecture-v2-spec.md"]},
+{id:"crit",label:"v2 自我批评",type:"reflection",slice:"active",imp:.88,sess:"S1",gist:"写入税判定器是最大软肋；τ 无标定；复杂度未证必要。",vb:[],feel:{label:"心虚",why:"把最难的问题藏进了一行 if",valid_at:"2026-11-04"},src:["对话"]},
+{id:"v25",label:"v2.5 情感陪伴版",type:"event",slice:"active",imp:.82,sess:"S1",gist:"写入税反转、双通道轮廓、回响三触发、主动提取、绝不虚构。",vb:[],feel:null,src:["memory-architecture-v2.5-companion.md"]},
+{id:"first",label:"第一/二条记忆",type:"event",slice:"working",imp:.92,sess:"S1",gist:"当场写下 preference 与项目档案——系统的冷启动。",vb:["这是这个系统的第一条和第二条记忆。"],feel:{label:"被触动",why:"被信任去记得，而不是被当工具",valid_at:"2026-11-04"},src:["memory_write"]},
+{id:"nofab",label:"绝不虚构",type:"rule",slice:"working",imp:.9,sess:"S1",gist:"取不回来就承认；假装记得是这套系统唯一的死罪。",vb:[],feel:null,src:["v2.5 §4"]},
+{id:"sparse",label:"情感稀疏规则",type:"rule",slice:"active",imp:.7,sess:"S1",gist:"1-2 条/长对话、必带 why；稀疏才珍贵，否则天花板挤死衰减曲线。",vb:[],feel:null,src:["v2.5 §2"]},
+{id:"fish",label:"大肥鱼案例",type:"event",slice:"active",imp:.86,sess:"S1",gist:"Prison《鱼的记忆脑图》：memory_brain/persona_state 真实代码可视化。",vb:[],feel:{label:"好胜",why:"别人已经给鱼装上大脑",valid_at:"2026-11-04"},src:["抖音视频 11661.mp4"]},
+{id:"fishdata",label:"942节点·3242连线",type:"fact",slice:"active",imp:.6,sess:"S1",gist:"长期库412 = 活跃226 + 归档186；检索四因子，重要性 ×0.46 主导。",vb:[],feel:null,src:["视频帧"]},
+{id:"v3",label:"v3 全图底座",type:"lesson",slice:"active",imp:.9,sess:"S1",gist:"图即记忆；层级=激活度切片；六类节点；五因子检索。",vb:[],feel:null,src:["memory-architecture-v3-spec.md"]},
+{id:"vs",label:"对标·超越",type:"lesson",slice:"active",imp:.75,sess:"S1",gist:"他们强在结构、我们全在动力学；纸面规范 vs 真实鱼缸。",vb:[],feel:null,src:["对话"]},
+{id:"philo",label:"项目哲学",type:"lesson",slice:"working",imp:.95,sess:"S1",gist:"发现现成的，超越现成的——超越必须接受检验。",vb:["我们的意义就是发现现成的，超越现成的。"],feel:{label:"振奋",why:"动词换了：不是看见，是超越",valid_at:"2026-11-04"},src:["用户"]},
+{id:"six",label:"神经科学六大发现",type:"fact",slice:"active",imp:.85,sess:"S2",gist:"海马体索引 / CLS双系统 / 再巩固 / 预测误差 / 图式一次巩固 / FTT。",vb:[],feel:null,src:["全网检索 2026-11-04"]},
+{id:"window",label:"巩固窗口",type:"fact",slice:"active",imp:.8,sess:"S2",gist:"安静清醒期也是巩固窗口——聊完即结算，有医学背书。",vb:[],feel:null,src:["Mednick 2011; Wamsley"]},
+{id:"tri",label:"三通道结构",type:"lesson",slice:"active",imp:.9,sess:"S2",gist:"gist 轮廓 / verbatim 锚点 / feeling 轮廓，FTT 独立双痕迹。",vb:[],feel:null,src:["Brainerd & Reyna"]},
+{id:"sacred",label:"sacred verbatim",type:"fact",slice:"active",imp:.8,sess:"S2",gist:"少数承载性原话精确存活；记住老友靠原话和梗，不靠细节。",vb:["sacred verbatim"],feel:null,src:["FTT"]},
+{id:"spread",label:"激活扩散检索",type:"lesson",slice:"active",imp:.85,sess:"S2",gist:"检索=沿关联边扩散，逐跳指数衰减、多跳桥接；ACT-R 幂律和。",vb:[],feel:null,src:["Collins & Loftus; ACT-R"]},
+{id:"settle",label:"结算协议",type:"lesson",slice:"active",imp:.9,sess:"S2",gist:"replay交错 → 预测误差 → 图式挂载 → 再巩固写回 → 生成反思。",vb:[],feel:null,src:["v3.1 §6"]},
+{id:"budget",label:"结算预算",type:"rule",slice:"active",imp:.75,sess:"S2",gist:"每会话改写旧节点≤5、图式边≤3：Lyapunov 上限操作化。",vb:[],feel:null,src:["补3"]},
+{id:"schema",label:"图式失真防护",type:"lesson",slice:"active",imp:.85,sess:"S2",gist:"图式=错误记忆头号制造机（Bartlett/DRM）；锚点兼任纠错锚点。",vb:[],feel:null,src:["补1"]},
+{id:"time",label:"时间切片链",type:"lesson",slice:"active",imp:.8,sess:"S2",gist:"每次会话=切片节点，串成时间链：上个月我们聊的那个。",vb:[],feel:null,src:["补5"]},
+{id:"echo5",label:"回响五触发",type:"rule",slice:"active",imp:.7,sess:"S2",gist:"日期 / 主题 / 情感押韵 / Zeigarnik 未竟 / 前瞻承诺。",vb:[],feel:null,src:["补4+前瞻"]},
+{id:"recall",label:"RECALL 基准",type:"fact",slice:"active",imp:.7,sess:"S2",gist:"13 可证伪维度：correction / calibration / spacing / Zeigarnik / relational。",vb:[],feel:null,src:["mlapeter/recall-bench"]},
+{id:"dim14",label:"第14维·token效率",type:"rule",slice:"active",imp:.8,sess:"S2",gist:"单位常驻 token 的有效记忆数——用户核心诉求进考卷。",vb:[],feel:null,src:["补6"]},
+{id:"final",label:"v3.1.1 终版",type:"event",slice:"working",imp:.95,sess:"S2",gist:"七原则定稿：全图底座·三通道·五因子+扩散+侧抑制·时间轴·结算+预算·失真防护·回响五触发·RECALL 14维。",vb:[],feel:null,src:["memory-architecture-v3.1.1-final.md"]},
+{id:"exp",label:"两周实验",type:"rule",slice:"active",imp:.6,sess:"S2",gist:"先砍半跑真实数据，决策门逐项加回，指标调参。",vb:[],feel:null,src:["v2.5 实验协议"]},
+{id:"anti",label:"反向检索",type:"rule",slice:"archive",imp:.5,sess:"S2",gist:"专找反对文献：扶手之外还要对手。（建议，未授权）",vb:[],feel:null,src:["对话"]},
+{id:"zeig",label:"Zeigarnik 效应",type:"fact",slice:"active",imp:.65,sess:"S2",gist:"未解决的话题在语境合适时自动浮出——老友的标志行为。",vb:[],feel:null,src:["RECALL"]}
+];
+const E_SAMPLE=[
+["v1","l1","entail",.9],["l1","v2","temporal",.6],["v2","crit","causal",.85],["crit","v25","causal",.8],
+["v25","first","cooccur",.6],["v25","nofab","entail",.8],["v25","sparse","entail",.7],
+["fish","v3","causal",.85],["fish","fishdata","entail",.8],["v3","vs","cooccur",.6],["vs","philo","cooccur",.7],
+["six","tri","cooccur",.6],["six","spread","cooccur",.6],["six","settle","causal",.8],["six","window","entail",.7],
+["tri","sacred","entail",.8],["tri","schema","entail",.8],["spread","settle","cooccur",.7],
+["settle","budget","entail",.8],["settle","time","cooccur",.6],["time","echo5","cooccur",.5],
+["echo5","zeig","entail",.8],["recall","dim14","entail",.8],["recall","exp","causal",.6],
+["exp","final","causal",.7],["anti","final","conflict",.4],
+["first","philo","rhyme",.9],["fish","philo","rhyme",.7],["crit","settle","rhyme",.5],
+["final","philo","entail",.9],["final","settle","entail",.85],["final","tri","entail",.85]
+];
+// ---- 真实数据接入：tools/export_map.py 会注入 window.__BRAIN__ ----
+const D = window.__BRAIN__ || null;
+const SESS = D ? D.sess : SESS_SAMPLE;
+const N = D ? D.nodes : N_SAMPLE;
+const E = D ? D.edges : E_SAMPLE;
+if (D) {
+  document.getElementById("srcBadge").textContent =
+    `引擎导出 · ${D.meta.nodes} 节点 / ${D.meta.edges} 边 · ${D.meta.exported} · ${D.meta.note}`;
+}
+// 会话内按重要性链式连接（时间切片链）
+SESS.map(s=>s.id).forEach(s=>{
+  const ns=N.filter(n=>n.sess===s).sort((a,b)=>b.imp-a.imp);
+  for(let i=0;i+1<ns.length;i++) E.push([ns[i].id,ns[i+1].id,"temporal",.25]);
+});
+const TC={event:"#ffd166",fact:"#06d6a0",skill:"#4cc9f0",lesson:"#ef476f",reflection:"#b5838d",rule:"#f78c6b"};
+const TN={event:"事件",fact:"事实",skill:"技能",lesson:"道理",reflection:"反思",rule:"规则"};
+const EC={temporal:"#8ecae6",causal:"#ffb703",cooccur:"#5b6b83",rhyme:"#ff70a6",conflict:"#e63946",entail:"#90be6d",topic:"#7b8aa0",entity:"#4cc9f0"};
+const EN={temporal:"时序",causal:"因果",cooccur:"共现",rhyme:"押韵",conflict:"矛盾",entail:"蕴含",topic:"主题",entity:"实体"};
+// v4.0 打分结构（与 brain/score.py 对齐；页面内是近似实现，权威数字见 tools/bench.py）
+const W={rel:.65,prior:.25,graph:.35};
+const byId={}; N.forEach(n=>byId[n.id]=n);
+N.forEach((n,i)=>{ n.x=0;n.y=0;n.vx=0;n.vy=0;n.glow=0;n.spread=0;n.peel=0;
+  const ring={working:110,active:230,archive:350}[n.slice];
+  const a=i*2.399963; n.x=innerWidth/2+ring*Math.cos(a); n.y=innerHeight/2+ring*Math.sin(a); });
+const adj={}; N.forEach(n=>adj[n.id]=[]);
+E.forEach(([a,b,t,w])=>{adj[a].push({b,t,w});adj[b].push({a,t,w});});
+const cv=document.getElementById("cv"),ctx=cv.getContext("2d");
+let DPR=Math.min(2,devicePixelRatio||1);
+function resize(){cv.width=innerWidth*DPR;cv.height=innerHeight*DPR;cv.style.width=innerWidth+"px";cv.style.height=innerHeight+"px";}
+resize();addEventListener("resize",resize);
+// 星空
+const stars=Array.from({length:130},()=>({x:Math.random(),y:Math.random(),r:Math.random()*1.3+.2,p:Math.random()*6.28}));
+// 物理
+let dragN=null,moved=false,mx=0,my=0,hoverN=null,sel=null,sessFilter="ALL",lastRes=[];
+function physics(){
+  const cx=innerWidth/2,cy=innerHeight/2;
+  for(const a of N){ if(a===dragN)continue;
+    let fx=(cx-a.x)*.012,fy=(cy-a.y)*.012;
+    for(const b of N){ if(a===b)continue;
+      let dx=a.x-b.x,dy=a.y-b.y,d2=dx*dx+dy*dy+40,f=(2600*Math.max(1,60/N.length))/d2;
+      fx+=dx/Math.sqrt(d2)*f; fy+=dy/Math.sqrt(d2)*f; }
+    for(const e of adj[a.id]){ const b=byId[e.b]; if(!b)continue;
+      const L=({temporal:130,causal:105,cooccur:95,rhyme:95,conflict:150,entail:110,topic:100,entity:100})[e.t]||110;
+      let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1;
+      fx+=(d-L)*dx/d*.02*e.w*4; fy+=(d-L)*dy/d*.02*e.w*4; }
+    a.vx=(a.vx+fx)*.86; a.vy=(a.vy+fy)*.86; a.x+=a.vx; a.y+=a.vy; }
+}
+function draw(){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.fillStyle="#050810";ctx.fillRect(0,0,innerWidth,innerHeight);
+  const t=performance.now()/1000;
+  for(const s of stars){ctx.globalAlpha=.25+.25*Math.sin(t+s.p);ctx.fillStyle="#8ecae6";
+    ctx.beginPath();ctx.arc(s.x*innerWidth,s.y*innerHeight,s.r,0,7);ctx.fill();}
+  ctx.globalAlpha=1;
+  const dimSess=n=>sessFilter!=="ALL"&&n.sess!==sessFilter;
+  for(const [a,b,tp,w] of E){const na=byId[a],nb=byId[b];if(!na||!nb)continue;
+    const selE=sel&&(a===sel.id||b===sel.id);
+    ctx.globalAlpha=dimSess(na)||dimSess(nb)?.03:(sel?(selE?.55:.05):.10+.22*w);
+    ctx.strokeStyle=EC[tp];ctx.lineWidth=selE?1.6:1;
+    ctx.beginPath();ctx.moveTo(na.x,na.y);ctx.lineTo(nb.x,nb.y);ctx.stroke();}
+  for(const n of N){const dim=dimSess(n);
+    const base=({working:1,active:.92,archive:.42})[n.slice];
+    const r=5+9*n.imp+(n===sel?2:0);
+    if(n.glow>0){const g=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,r*4);
+      g.addColorStop(0,"rgba(76,201,240,.55)");g.addColorStop(1,"rgba(76,201,240,0)");
+      ctx.globalAlpha=Math.min(1,n.glow)*base;ctx.fillStyle=g;
+      ctx.beginPath();ctx.arc(n.x,n.y,r*4,0,7);ctx.fill();}
+    ctx.globalAlpha=(dim?.08:base);
+    ctx.fillStyle=TC[n.type];
+    ctx.beginPath();ctx.arc(n.x,n.y,r,0,7);ctx.fill();
+    ctx.lineWidth=n.slice==="working"?2.4:1.2;
+    ctx.strokeStyle=n.slice==="working"?"#ffffff":n.slice==="archive"?"#33415c":"#8fa3c0";
+    ctx.stroke();
+    if(n===hoverN||n===sel||n.imp>.88){ctx.globalAlpha=dim?.08:.95;
+      ctx.font="11px Microsoft YaHei,monospace";ctx.fillStyle=e=>"#dfe8f5";
+      ctx.fillStyle="#dfe8f5";ctx.textAlign="center";
+      ctx.fillText(n.label,n.x,n.y-r-6);}}
+  ctx.globalAlpha=1;
+  requestAnimationFrame(tick);
+}
+function tick(){physics();for(const n of N)n.glow*=.965;draw();}
+requestAnimationFrame(tick);
+// 交互
+function pick(x,y){let best=null,bd=1e9;for(const n of N){const d=Math.hypot(n.x-x,n.y-y);if(d<18+9*n.imp&&d<bd){bd=d;best=n;}}return best;}
+cv.addEventListener("mousedown",e=>{mx=e.clientX;my=e.clientY;moved=false;dragN=pick(mx,my);});
+cv.addEventListener("mousemove",e=>{const x=e.clientX,y=e.clientY;
+  if(dragN){if(Math.hypot(x-mx,y-my)>4)moved=true;dragN.x=x;dragN.y=y;dragN.vx=dragN.vy=0;}
+  hoverN=pick(x,y);cv.style.cursor=dragN?"grabbing":hoverN?"pointer":"default";});
+cv.addEventListener("mouseup",e=>{if(dragN&&!moved){select(dragN);}dragN=null;});
+cv.addEventListener("dblclick",()=>{sel=null;lastRes=[];renderPanel();});
+// 检索
+function toks(s){return (s.toLowerCase().match(/[a-z0-9]+|[\u4e00-\u9fff]/g)||[]);}
+function runQuery(){const q=document.getElementById("q").value.trim();if(!q)return;
+  const qt=new Set(toks(q)),seeds=[];
+  for(const n of N){if(n.slice==="archive")continue;
+    const st=new Set(toks(n.label+n.gist));
+    const sem=[...qt].filter(x=>st.has(x)).length/Math.max(1,qt.size+st.size- [...qt].filter(x=>st.has(x)).length);
+    const ft=n.feel?new Set(toks(n.feel.label+(n.feel.why||""))):new Set();
+    const rhyme=[...qt].some(x=>ft.has(x))?1:0;
+    if(sem>0||rhyme)seeds.push({n,sem,rhyme});}
+  // 扩散波
+  N.forEach(n=>{n.glow=0;n.spread=0;});
+  let frontier=seeds.map(s=>({id:s.n.id,v:1}));const seen=new Set(frontier.map(f=>f.id));
+  seeds.forEach(s=>{s.n.glow=1;});
+  const spread={}; frontier.forEach(f=>spread[f.id]=1);
+  let hop=0;
+  (function wave(){ if(hop>=3||!frontier.length){finish();return;}
+    const gain={};
+    for(const f of frontier){ for(const e of adj[f.id]){ if(!seen.has(e.b)) gain[e.b]=(gain[e.b]||0)+f.v*e.w; } }
+    frontier.forEach(f=>seen.add(f.id));
+    const top=Object.entries(gain).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    frontier=top.map(([id,v])=>({id,v:v*.6}));
+    frontier.forEach(f=>{spread[f.id]=(spread[f.id]||0)+f.v; byId[f.id].glow=Math.max(byId[f.id].glow,.35+.5*f.v);});
+    hop++; setTimeout(wave,240); })();
+  function finish(){ const mx=Math.max(1,...Object.values(spread));
+    const GROWTH=.45, rows=[];
+    const ids=new Set([...seeds.map(s=>s.n.id),...Object.keys(spread)]);
+    for(const id of ids){ const n=byId[id]; if(!n) continue;
+      const sd=seeds.find(s=>s.n.id===id), sem=sd?sd.sem:0;
+      const g=(spread[id]||0)/mx;
+      const rel=Math.max(sem,GROWTH*g);
+      const fresh=n.slice==="working"?1:n.slice==="active"?.8:.4;
+      const prior=.45*n.imp+.30*fresh+(n.feel?.25:0);
+      rows.push({n:n,sem:sem,rhyme:sd?sd.rhyme:0,graph:g,
+        decomp:{rel:rel,prior:prior,graph:g},
+        score:W.rel*rel+W.prior*prior+W.graph*g}); }
+    lastRes=rows.filter(o=>o.decomp.rel>=.06||o.graph>=.22)
+      .sort((a,b)=>b.score-a.score).slice(0,6);
+    renderPanel(); }}
+// 抽丝剥茧
+function select(n){ if(sel===n){n.peel=Math.min(3,n.peel+1);} else {n.peel=1;} sel=n; renderPanel(); }
+function renderPanel(){ const p=document.getElementById("panel");
+  if(!sel){p.innerHTML='<p style="color:#5b6b83;font-size:12px;margin-top:30px;text-align:center">点击节点开始抽丝剥茧<br>双击空白重置</p>';return;}
+  const n=sel,peel=n.peel||1;
+  let h=`<h2>${n.label}</h2>
+    <span class="tag" style="background:${TC[n.type]}22;color:${TC[n.type]};border:1px solid ${TC[n.type]}66">${TN[n.type]}</span>
+    <span class="tag" style="background:#12203a;color:#8fa3c0;border:1px solid #243b5e">${{working:"工作记忆",active:"活跃",archive:"归档"}}[n.slice]</span>
+    <span class="tag" style="background:#12203a;color:#8fa3c0;border:1px solid #243b5e">重要性 ${n.imp.toFixed(2)}</span>
+    <div class="peeldots">${[1,2,3].map(i=>`<div class="peeldot ${i<=peel?"on":""}"></div>`).join("")}</div>`;
+  if(peel>=1) h+=`<div class="sec"><h3>第一层 · 轮廓（gist）</h3><p>${n.gist}</p></div>`;
+  if(peel>=2){ h+=`<div class="sec"><h3>第二层 · 锚点与情感</h3>`;
+    n.vb.forEach(v=>h+=`<div class="vb">“${v}”</div>`);
+    if(n.feel) h+=`<div class="feel">feeling：${n.feel.label} · why：${n.feel.why}<br><span class="src">valid_at ${n.feel.valid_at}（旧事用过去时态提起）</span></div>`;
+    if(!n.vb.length&&!n.feel)h+=`<p class="src">（无锚点 / 无情感标记——稀疏性生效）</p>`;
+    h+=`</div>`; }
+  if(peel>=3) h+=`<div class="sec"><h3>第三层 · 溯源（provenance）</h3>${n.src.map(s=>`<p class="src">· ${s}</p>`).join("")}<p class="src">写入 ${n.sess} · 永不删除（P2）</p></div>`;
+  if(peel<3) h+=`<button id="peelBtn" onclick="sel.peel=Math.min(3,sel.peel+1);renderPanel()">再剥一层（${3-peel} 层剩余）</button>`;
+  if(lastRes.length){ h+=`<div class="sec"><h3>检索得分分解（v4：rel / prior / graph）</h3>`;
+    const C={rel:"#06d6a0",prior:"#8fa3c0",graph:"#4cc9f0"};
+    const CN={rel:"相关",prior:"先验",graph:"扩散"};
+    for(const o of lastRes){ if(o.n!==n)continue;
+      h+=`<div class="resrow"><div class="rl"><span>${o.n.label}</span><span>${(o.score*100).toFixed(0)}</span></div><div class="bar">`+
+        Object.keys(W).map(k=>`<div style="width:${Math.min(100,W[k]*o.decomp[k]*100/1.25)}%;background:${C[k]}"></div>`).join("")+`</div></div>`;}
+    h+=`<p class="src">${Object.keys(W).map(k=>`<span style="color:${C[k]}">■</span>${CN[k]}×${W[k]} `).join(" ")}</p></div>`; }
+  p.innerHTML=h; }
+// 结算
+let settleCount=0;
+function settle(){ const toast=document.getElementById("toast");toast.style.display="block";
+  const steps=["① replay 交错：新旧节点一起重放…","② 预测误差检测：扫描 gist 冲突候选…","③ 图式挂载：新记忆挂到既有道理节点…","④ 再巩固写回：提起过的旧记忆进入更新窗口…","⑤ 生成反思节点 ✓"];
+  steps.forEach((s,i)=>setTimeout(()=>{toast.textContent=s;
+    if(i===steps.length-1){settleCount++;
+      const nid="R"+settleCount;
+      N.push({id:nid,label:"反思 · 结算 #"+settleCount,type:"reflection",slice:"working",imp:.6,sess:"S2",
+        gist:`本次结算：新增 1 反思节点；预算 nodes≤5 edges≤3；第${14}维效率已刷新。`,
+        vb:[],feel:{label:"踏实",why:"安静清醒期就是巩固窗口",valid_at:"2026-11-04"},src:["结算协议 §6"],x:innerWidth/2+(Math.random()*120-60),y:innerHeight/2+(Math.random()*120-60),vx:0,vy:0,glow:1,spread:0,peel:0});
+      byId[nid]=N[N.length-1];adj[nid]=[];
+      const tops=N.filter(m=>m.type==="lesson").sort((a,b)=>b.imp-a.imp).slice(0,2);
+      tops.forEach(m=>{adj[nid].push({b:m.id,t:"entail",w:.7});adj[m.id].push({b:nid,t:"entail",w:.7});});
+      E.push([nid,tops[0].id,"entail",.7],[nid,tops[1].id,"entail",.7]);
+      updateStats(); setTimeout(()=>toast.style.display="none",1600); renderPanel(); }},i*600)); }
+// 过滤 / 统计 / 时间链
+function filterSlices(){ const cbs=document.querySelectorAll('header input[type=checkbox]');
+  const show={working:cbs[0].checked,active:cbs[1].checked,archive:cbs[2].checked};
+  N.forEach(n=>{n.hidden=!show[n.slice];});
+  N.forEach(n=>{ if(n.hidden){} }); updateStats(); }
+function updateStats(){ const vis=N.filter(n=>!n.hidden);
+  const w=vis.filter(n=>n.slice==="working").length,a=vis.filter(n=>n.slice==="active").length,ar=vis.filter(n=>n.slice==="archive").length;
+  // 统计口径改为实测：记忆字符 / 注入均值 / 压缩比（不再用 w*120+a*45 这种拍出来的 token 估算）
+  const chars=vis.reduce((s,n)=>s+(n.gist||"").length+(n.vb&&n.vb[0]?n.vb[0].length:0),0);
+  const avg=D&&D.meta&&D.meta.avg_inject_chars?D.meta.avg_inject_chars:0;
+  document.getElementById("stTok").textContent=chars;
+  document.getElementById("stN").textContent=vis.length;
+  document.getElementById("stE").textContent=avg?(chars/Math.max(1,avg)).toFixed(1)+"x":"—";
+  document.getElementById("stA").textContent=(ar/Math.max(1,a+ar)*100).toFixed(0)+"%"; }
+const sessEl=document.getElementById("sess");
+["ALL",...SESS.map(s=>s.id)].forEach(s=>{ const d=document.createElement("div");
+  d.className="chip"+(s==="ALL"?" on":"");d.textContent=s==="ALL"?"全部时间":SESS.find(x=>x.id===s).label;
+  d.onclick=()=>{sessFilter=s;document.querySelectorAll(".chip").forEach(c=>c.classList.remove("on"));d.classList.add("on");};
+  sessEl.appendChild(d); });
+const lg=document.getElementById("legend");
+lg.innerHTML=Object.keys(TC).map(k=>`<span class="dot" style="background:${TC[k]}"></span>${TN[k]} `).join("")+"<br>"+
+  Object.keys(EC).map(k=>`<span style="color:${EC[k]}">—</span>${EN[k]} `).join("");
+updateStats();
+</script>
+</body></html>

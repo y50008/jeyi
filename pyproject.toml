@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memory-brain-agent"
+version = "4.0.0"
+description = "全图底座记忆引擎：用 300 字/轮的预算记住一个人几个月的事"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = []            # 零运行时依赖，刻意为之
+
+[project.optional-dependencies]
+remote = []                  # OpenAI 兼容适配层用 stdlib urllib，仍无需依赖
+dev = []
+
+[tool.setuptools.packages.find]
+include = ["brain*"]

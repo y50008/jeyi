@@ -1,0 +1,27 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.10", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: tests (32)
+        run: python tests/test_brain.py
+      - name: demo
+        run: python demo.py
+      - name: replay (sqlite)
+        run: python tools/replay.py --sqlite
+      - name: export brain map
+        run: python tools/export_map.py
+      - name: bench
+        run: python tools/bench.py --json > bench.json
+      - name: quality gate
+        run: python tools/ci_gate.py bench.json
