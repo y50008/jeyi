@@ -5,7 +5,8 @@ memory-brain-agent · v4.6 记忆脑图引擎
 30 秒上手
 --------
 `ash
-git clone <repo> && cd memory-brain
+git clone https://github.com/y50008/memory-brain-agent.git
+cd memory-brain-agent
 python demo.py                 # 零依赖，立刻能跑
 python tests/test_brain.py     # 40/40
 `

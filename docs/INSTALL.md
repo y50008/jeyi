@@ -28,7 +28,7 @@ Linux/macOS 把 `.venv\Scripts\` 换成 `.venv/bin/` 即可。
 ## 一、装引擎
 
 ```powershell
-git clone <repo> memory-brain
+git clone https://github.com/y50008/memory-brain-agent.git memory-brain
 cd memory-brain
 python -m venv .venv
 .\.venv\Scripts\activate
