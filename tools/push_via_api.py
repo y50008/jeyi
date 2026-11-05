@@ -89,11 +89,58 @@ def ls_tree(commit: str) -> dict:
     return files
 
 
+
+
+def do_sync(gh: GH, owner: str, name: str, branch: str, dry: bool) -> int:
+    """把远端内容对齐到本地 HEAD，不看历史（历史错乱/漏推时用）。"""
+    head = gh.call("GET", f"/repos/{owner}/{name}/git/ref/heads/{branch}")["object"]["sha"]
+    ct = gh.call("GET", f"/repos/{owner}/{name}/git/commits/{head}")
+    base = ct["tree"]["sha"]
+    remote_tree = gh.call("GET", f"/repos/{owner}/{name}/git/trees/{base}?recursive=1")["tree"]
+    remote = {e["path"]: e["sha"] for e in remote_tree if e["type"] == "blob"}
+    local = ls_tree("HEAD")
+    entries = []
+    for path, (mode, typ, sha) in local.items():
+        if remote.get(path) == sha:
+            continue
+        raw = sh("git", "cat-file", "blob", sha, binary=True)
+        if dry:
+            entries.append({"path": path, "action": "改"})
+            continue
+        res = gh.call("POST", f"/repos/{owner}/{name}/git/blobs", {
+            "content": base64.b64encode(raw).decode("ascii"), "encoding": "base64"})
+        entries.append({"path": path, "mode": mode, "type": typ, "sha": res["sha"]})
+    for path in remote:
+        if path not in local:
+            entries.append({"path": path, "mode": "100644", "type": "blob",
+                            "sha": None, "action": "删"})
+    if not entries:
+        print("远端与本地已完全一致")
+        return 0
+    for e in entries:
+        print(f"  {e.get('action', '改')} {e['path']}")
+    if dry:
+        print(f"（dry-run：{len(entries)} 个文件待同步）")
+        return 0
+    clean = [{k: v for k, v in e.items() if k != "action"} for e in entries]
+    tree = gh.call("POST", f"/repos/{owner}/{name}/git/trees",
+                   {"base_tree": base, "tree": clean})
+    commit = gh.call("POST", f"/repos/{owner}/{name}/git/commits", {
+        "message": "sync: 把远端内容对齐到本地 HEAD（补齐遗漏文件）",
+        "tree": tree["sha"], "parents": [head]})
+    gh.call("PATCH", f"/repos/{owner}/{name}/git/refs/heads/{branch}",
+            {"sha": commit["sha"], "force": True})
+    print(f"已同步 -> {commit['sha'][:8]}")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", required=True, help="owner/name")
     ap.add_argument("--branch", default="main")
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--sync", action="store_true",
+                    help="不管历史，直接把远端内容对齐到当前 HEAD（补漏/纠偏用）")
     ap.add_argument("--since", default=None,
                     help="只推这个本地提交之后的新提交（接在远端当前 HEAD 上）")
     a = ap.parse_args()
@@ -109,7 +156,7 @@ def main():
         else:
             raise SystemExit(f"--since {a.since} 不在本地历史里")
     print(f"本地 {len(commits)} 个提交，目标 {a.repo}:{a.branch}")
-    if a.dry:
+    if a.dry and not a.sync:
         prev = {}
         for c in commits:
             cur = ls_tree(c)
@@ -122,6 +169,8 @@ def main():
         return 0
 
     gh = GH(token())
+    if a.sync:
+        return do_sync(gh, owner, name, a.branch, a.dry)
     me = gh.call("GET", "/user")
     print(f"身份：{me['login']}")
 
