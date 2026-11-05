@@ -1,0 +1,27 @@
+name: dense
+# 手动触发：会下载 24MB 模型并跑双集基准，不适合每次 push 都跑
+on:
+  workflow_dispatch:
+
+jobs:
+  dense:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install dense extras
+        run: pip install -e ".[dense]"
+      - name: download model + self-check
+        run: python tools/setup_dense.py
+      - name: bench (main, dense)
+        run: python tools/bench.py --dense --json > bench-dense.json
+      - name: gate (main, dense)
+        run: python tools/ci_gate.py bench-dense.json
+      - name: bench (holdout, dense)
+        run: python tools/bench.py --dense --holdout --json > holdout-dense.json
+      - name: gate (holdout, dense)
+        run: python tools/ci_gate.py holdout-dense.json --holdout
+      - name: tests with dense
+        run: python tests/test_brain.py

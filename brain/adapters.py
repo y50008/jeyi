@@ -20,6 +20,8 @@ class HashingEmbedding:
     诚实说明：它是词袋哈希，不是语义模型。能提升"字面相近但词序不同"的召回，
     不能把「饮料」和「铁观音」连起来——那需要真模型（见 OpenAICompatibleEmb）。
     """
+    semantic = False        # 词袋哈希，不是语义模型：不参与稠密检索路径
+
     def __init__(self, dim=128): self.dim = dim
     def embed(self, text: str) -> list:
         from .lang import tokenize
@@ -34,6 +36,8 @@ def cosine(a, b):
     return sum(x * y for x, y in zip(a, b))
 
 class OpenAICompatibleEmb:
+    semantic = True         # 真向量模型
+
     def __init__(self, api_base, api_key, model, timeout=30):
         self.url = api_base.rstrip("/") + "/v1/embeddings"
         self.key, self.model, self.timeout = api_key, model, timeout

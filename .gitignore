@@ -25,3 +25,7 @@ ui/brain_map_live.html
 .idea/
 .DS_Store
 Thumbs.db
+
+# 稠密模型（缓存在用户目录，不进仓库）
+*.onnx
+*.onnx.part

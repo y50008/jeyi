@@ -1,4 +1,4 @@
-﻿"""tools/bench.py — 检索质量基准（v4.0 新增，这是 v3 最缺的那场"检验"）
+"""tools/bench.py — 检索质量基准（v4.0 新增，这是 v3 最缺的那场"检验"）
 
 不测"机制在不在"，测"问对了能不能拿回来、代价多大"。
 
@@ -250,8 +250,8 @@ class NaiveV3:
         return [x for x in out if x["score"] >= NAIVE_FLOOR][:k]
 
 
-def _build_engine(memories=None):
-    ag = MemoryHooks()
+def _build_engine(memories=None, embedding=None):
+    ag = MemoryHooks(embedding=embedding)
     keys = {}
     ingested = 0
     for text, key in (memories or MEMORIES):
@@ -299,12 +299,20 @@ def _evaluate_pack(ag, keys, packer_fn, reset=True, questions=None):
 def main():
     as_json = "--json" in sys.argv
     holdout = "--holdout" in sys.argv
+    dense_mode = "--dense" in sys.argv
+    emb = None
+    if dense_mode:
+        from brain import dense as _dense
+        emb = _dense.make_embedder()
+        if emb is None:
+            print("[dense] 模型或依赖缺失，先跑 python tools/setup_dense.py")
+            return 1
     mem = HOLDOUT_MEMORIES if holdout else MEMORIES
     qs = HOLDOUT_QUESTIONS if holdout else QUESTIONS
     if not as_json:
         print(("【留出集】" if holdout else "【主集】")
               + " 主集用于调参，留出集只在定稿后跑一次——两者的差距就是过拟合的度量。")
-    ag, keys, ingested = _build_engine(mem)
+    ag, keys, ingested = _build_engine(mem, embedding=emb)
     n_nodes = len(ag.brain.nodes)
     edges = sum(len(v) for v in ag.brain.adj.values()) // 2
 
@@ -401,6 +409,8 @@ def main():
         return "".join(pad(c, w, right=(i > 0)) for i, (c, w) in enumerate(zip(cells, W)))
 
     print("=" * 74)
+    backend = "稠密开（bge-small-zh-v1.5 int8）+ 词法 RRF" if dense_mode else "纯词法（零依赖）"
+    print(f"检索后端：{backend}")
     print(f"语料：{len(mem)} 条记忆 → 写入 {ingested} 条节点 / {edges} 条边；问题 {len(qs)} 个")
     print("注意：合成语料，人工构造，不代表公开基准（见 docs/VALIDATION.md）")
     print("=" * 74)

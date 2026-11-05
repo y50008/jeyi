@@ -510,6 +510,30 @@ def test_long_session_no_blowup():
     print(f"ok  长会话注入封顶（均值 {sum(sizes)/len(sizes):.0f} 字 / 上限 300）")
 
 
+def test_dense_hybrid_recalls_paraphrase():
+    """装了稠密模型时：零词面重合的改写也必须能对上。
+
+    这里直接测稠密组件本身（"饮料"是否把"黑咖啡"排到第一），
+    而不去测阈值——阈值是标定出来的工程参数，端到端效果由 bench 覆盖。
+    没装模型时优雅跳过（核心库零依赖，装不装都能跑）。
+    """
+    from brain import dense
+    if not (dense.available() and dense.model_present()):
+        print("skip 稠密模型未安装（需要时跑：python tools/setup_dense.py）")
+        return
+    emb = dense.make_embedder()
+    ag = MemoryHooks(embedding=emb)
+    ag.on_message("我每天喝一杯黑咖啡，不加糖")
+    ag.on_message("我下周要交一份季度报告")
+    ag.scorer._sync()
+    qv = emb.embed_query("我平时喝什么饮料")
+    hits = ag.scorer.dense.search(qv, k=5)
+    assert hits, "稠密索引应有结果"
+    top = ag.brain.nodes[hits[0][0]].label
+    assert "咖啡" in top, f"「饮料」应排到「黑咖啡」而不是「{top}」"
+    print(f"ok  稠密语义召回（饮料 → {top}，cos={hits[0][1]:.3f}）")
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

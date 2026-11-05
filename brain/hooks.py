@@ -182,9 +182,15 @@ class MemoryHooks:
         self.scorer._sync()
         idx = self.scorer.index
         linked, seen_other = 0, set()
+        n_total = max(1, idx.N)
         for tok in sorted(set(tokenize(n.gist)), key=lambda t: idx.df(t)):
             df = idx.df(tok)
             if df <= 0 or df > 2:
+                continue
+            # 双字词天然是主题（"团子"/"杭州"）；单字只有在库足够大时才算——
+            # 2~3 条记忆的小库里，任何两句都共享几个字，"稀有"没有意义
+            # （实测把「咖啡」和「季度报告」连成了一张网）。
+            if len(tok) == 1 and n_total < 20:
                 continue
             if find_date(tok)[0] is not None:
                 continue                      # 时间词不是主题

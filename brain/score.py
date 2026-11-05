@@ -13,7 +13,6 @@ v3 的三处结构性错误，这里逐个修：
 from __future__ import annotations
 import math
 from . import clock
-from .adapters import cosine
 from .lang import tokenize, expand, ALIASES
 
 # ---- 标定常数（全部可通过 bench.py 重新校准）----
@@ -25,6 +24,25 @@ GRAPH_BONUS = 0.35      # 图的排序加成
 SEED_K = 5              # 扩散种子数
 ARCHIVE_PENALTY = 0.55  # 显式回忆时归档节点的排序惩罚（能翻出来，但排在活跃记忆之后）
 EXPAND_W = 1.0          # 别名扩展词权重。实测降到 0.5 反而掉主集分（"年纪→岁"需要等权），保持等权
+# ---- 稠密检索（只有装了 embedding 才生效）----
+DENSE_TOP_K = 50        # 稠密召回条数
+DENSE_FLOOR = 0.58      # 纯稠密命中进候选的最低余弦（按弃答分布标定）
+DENSE_RRF_K = 10        # RRF 平滑常数：越小越看重头部名次
+
+
+def _rrf(rank_a, rank_b, k: int = DENSE_RRF_K) -> float:
+    """Reciprocal Rank Fusion，归一化到 [0,1]（两路都排第 1 时为 1.0）。
+
+    为什么不用分数融合：稠密余弦与 tf-idf 余弦不在一个尺度上，
+    取 max 会让稠密单方面覆盖词法的正确排序（主集实测 96.2 → 86.8）。
+    RRF 只看名次：词法很自信时（第 1 名），稠密的异议推不倒它；
+    词法完全失明时（没有候选），稠密第 1 名直接拿到 0.5。
+    """
+    s = (1.0 / (k + rank_a)) if rank_a else 0.0
+    d = (1.0 / (k + rank_b)) if rank_b else 0.0
+    return (s + d) * (k + 1) / 2.0
+
+
 SPREAD_DECAY = 0.6      # 逐跳衰减
 SPREAD_TOPK = 3         # 每跳只有 top-3 获得传播资格（侧抑制）
 # 只有「语义边」参与扩散：会话时序边会把整条会话串成链，
@@ -103,34 +121,93 @@ class Scorer:
         self.embedding = embedding
         self.index = Index()
         self._known: set[str] = set()
-        self._veccache: dict[str, list] = {}
         self._seen_version = -1
+        # 稠密索引：只有装了 embedding 才存在（否则整个稠密路径不参与，零开销）
+        self.dense = None
+        if embedding is not None and getattr(embedding, "semantic", True):
+            try:
+                from .dense import DenseIndex
+                self.dense = DenseIndex()
+            except Exception:
+                self.dense = None
 
     # ---- 索引同步（增量，O(新增节点)）----
     def _sync(self):
         b = self.brain
         if b.version == self._seen_version:
             return
-        for nid, n in b.nodes.items():
-            if nid not in self._known:
-                self.index.add(nid, tokenize(self._text(n)))
-                self._known.add(nid)
+        new_ids = [nid for nid in b.nodes if nid not in self._known]
+        for nid in new_ids:
+            self.index.add(nid, tokenize(self._text(b.nodes[nid])))
+            self._known.add(nid)
+        if self.dense is not None and new_ids:
+            texts = [self._dense_text(b.nodes[nid]) for nid in new_ids]
+            vecs = self._embed_batch(texts)
+            for nid, v in zip(new_ids, vecs):
+                if v:
+                    self.dense.add(nid, v)
         self._seen_version = b.version
+
+    def _embed_batch(self, texts):
+        """优先走批接口（ONNX 批推理快一个量级），退化为逐条。"""
+        emb = self.embedding
+        if hasattr(emb, "embed_batch"):
+            try:
+                return emb.embed_batch(texts)
+            except Exception:
+                pass
+        return [emb.embed(t) for t in texts]
+
+    def _embed_query(self, text: str):
+        emb = self.embedding
+        if emb is None:
+            return None
+        if hasattr(emb, "embed_query"):
+            try:
+                return emb.embed_query(text)
+            except Exception:
+                pass
+        return emb.embed(text)
 
     @staticmethod
     def _text(n) -> str:
+        """词法索引用的文本：多留几路词面（label/gist/verbatim/entities）能提高召回。"""
         return " ".join([n.label, n.gist, " ".join(n.verbatim), " ".join(n.entities or [])])
+
+    @staticmethod
+    def _dense_text(n) -> str:
+        """稠密向量用的文本：去重后的干净表述。
+
+        自动抽取的节点里 label ≈ gist ≈ verbatim（同一句话三遍），
+        把它整段喂给向量模型会让句子加权重复、语义被稀释；
+        gist 已经是去掉口语填充词的版本，用它 + 实体就够。
+        """
+        parts = []
+        for s in (n.gist, n.label):
+            s = (s or "").strip()
+            if s and s not in parts:
+                parts.append(s)
+        for e in (n.entities or [])[:3]:
+            if e and e not in parts and e not in n.gist:
+                parts.append(e)
+        return " ".join(parts) or n.label
 
     def _rebuild(self):
         """全量重建（加载后/结算后调用；测试也用它作为显式契约）。"""
         self.index = Index()
         self._known.clear()
-        self._veccache.clear()
-        for nid, n in self.brain.nodes.items():
-            if n.status != "live":
-                continue
+        live = [(nid, n) for nid, n in self.brain.nodes.items() if n.status == "live"]
+        for nid, n in live:
             self.index.add(nid, tokenize(self._text(n)))
             self._known.add(nid)
+        if self.dense is not None:
+            from .dense import DenseIndex
+            self.dense = DenseIndex()
+            if live:
+                vecs = self._embed_batch([self._dense_text(n) for _nid, n in live])
+                for (nid, _n), v in zip(live, vecs):
+                    if v:
+                        self.dense.add(nid, v)
         self._seen_version = self.brain.version
 
     # ---- 相关度 ----
@@ -222,29 +299,51 @@ class Scorer:
         self._sync()
         qtoks = tokenize(query)
         qw = self.query_weights(qtoks)
-        qvec = self.embedding.embed(query) if self.embedding else None
-        cand = self.index.candidates(list(qw))
-        # 候选：命中索引的 + 有 feeling 文本命中的（情感押韵通道）
-        scored: dict[str, dict] = {}
-        for nid in cand:
+        qvec = self._embed_query(query) if self.embedding else None
+
+        # ---- 词法一路 ----
+        sparse: dict[str, float] = {}
+        for nid in self.index.candidates(list(qw)):
             n = self.brain.nodes.get(nid)
             if n is None or n.status != "live":
                 continue
             if n.slice == "archive" and not include_archive:
                 continue
-            base = self.rel(qw, n)
-            dense = 0.0
-            if self.embedding and qvec is not None:
-                nv = self._nodevec(n)
-                if nv:
-                    dense = max(0.0, cosine(qvec, nv))
-            rel = (1 - DENSE_W) * base + DENSE_W * dense if self.embedding else base
-            scored[nid] = {"rel": rel, "sparse": base, "dense": dense}
+            sparse[nid] = self.rel(qw, n)
 
-        # 种子 = 纯相关度 top-k（不掺入重要性，避免"重要但不相关"污染扩散源）
-        seeds = [x["id"] for x in
-                 sorted(({"id": nid, **v} for nid, v in scored.items()),
-                        key=lambda x: -x["rel"])[:SEED_K]]
+        # ---- 稠密一路：扫全库，不受词法候选集限制（「宠物→猫」能命中的前提）----
+        dense_cos: dict[str, float] = {}
+        if self.dense is not None and qvec is not None and len(self.dense):
+            for nid, sim in self.dense.search(qvec, k=DENSE_TOP_K):
+                n = self.brain.nodes.get(nid)
+                if n is None or n.status != "live":
+                    continue
+                if n.slice == "archive" and not include_archive:
+                    continue
+                dense_cos[nid] = max(0.0, sim)
+
+        # ---- 名次融合（RRF）----
+        s_order = sorted(sparse, key=lambda x: -sparse[x])
+        d_order = sorted(dense_cos, key=lambda x: -dense_cos[x])
+        r_s = {nid: i + 1 for i, nid in enumerate(s_order)}
+        r_d = {nid: i + 1 for i, nid in enumerate(d_order)}
+        scored: dict[str, dict] = {}
+        for nid in set(sparse) | set(dense_cos):
+            s_rel = sparse.get(nid, 0.0)
+            d_cos = dense_cos.get(nid, 0.0)
+            # 入池条件：有任何词面信号（再弱也要留着当扩散桥），或稠密已过线。
+            # 低于线的稠密候选必须丢弃——它是"topically 相近但没答上"的那一类，
+            # 留在池里会当种子扩散出邻居，把弃答题全灌满（实测弃答 100% → 0%）。
+            if s_rel <= 0.0 and d_cos < DENSE_FLOOR:
+                continue
+            scored[nid] = {"rel": _rrf(r_s.get(nid), r_d.get(nid)),
+                           "sparse": s_rel, "dense": d_cos}
+
+        # 种子 = 两路各自的强信号 top-k。这里**不能**先按门控筛：
+        # 弱词面命中（「我家猫身体…」只命中一个"猫"字）恰恰是多跳扩散的桥，
+        # 提前筛掉它，图扩散就永远起不了步（v4.1 的 test_graph_diffusion_multihop）。
+        seed_score = {nid: max(v["sparse"], v["dense"]) for nid, v in scored.items()}
+        seeds = sorted(seed_score, key=lambda x: -seed_score[x])[:SEED_K]
         mass = self.spread(seeds)
         for nid, g in mass.items():
             n = self.brain.nodes.get(nid)
@@ -259,10 +358,13 @@ class Scorer:
         now = clock.now()
         for nid, v in scored.items():
             n = self.brain.nodes[nid]
-            rel = v["rel"]
+            rel = v["rel"]                  # RRF 融合分，只用于排序
             g = v.get("graph", 0.0)
-            # 门控：词面够近，或图连接足够强（同句共现级），二者取一
-            if rel < REL_FLOOR and g < GRAPH_ADMIT:
+            by_lex = v["sparse"] >= REL_FLOOR
+            by_dense = v["dense"] >= DENSE_FLOOR
+            # 准入：词法够近、稠密够自信、图连接够强，三者取一。
+            # 注意 RRF 分不能拿来当门槛——它是名次归一化值，第一名恒为 0.5 起。
+            if not (by_lex or by_dense or g >= GRAPH_ADMIT):
                 continue
             A = self.brain.freshness(n, now)
             E = self.brain.emotion_freshness(n, now)
@@ -274,7 +376,7 @@ class Scorer:
             penalty = ARCHIVE_PENALTY if n.slice == "archive" else 1.0
             score = (0.65 * rel + 0.25 * prior + GRAPH_BONUS * g) * align * penalty
             out.append({"id": nid, "label": n.label, "score": round(score, 4),
-                        "_graph_only": rel < REL_FLOOR,
+                        "_graph_only": not (by_lex or by_dense),
                         "decomp": {"rel": round(rel, 3), "sparse": round(v["sparse"], 3),
                                    "dense": round(v["dense"], 3), "graph": round(g, 3),
                                    "I": round(I, 3), "A": round(A, 3), "E": round(E, 3),
@@ -286,9 +388,3 @@ class Scorer:
             x.pop("_graph_only", None)
         return out[:k]
 
-    def _nodevec(self, n):
-        if not self.embedding:
-            return None
-        if n.id not in self._veccache:
-            self._veccache[n.id] = self.embedding.embed(self._text(n))
-        return self._veccache[n.id]

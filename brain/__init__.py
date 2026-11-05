@@ -1,4 +1,4 @@
-﻿"""memory-brain — v4.0 全图底座记忆引擎（agent 插件）
+"""memory-brain — v4.0 全图底座记忆引擎（agent 插件）
 
 发现现成的，超越现成的——超越必须接受检验。
 """
@@ -13,7 +13,7 @@ from .adapters import (HashingEmbedding, OpenAICompatibleEmb, cosine,
                        HeuristicJudge, OpenAICompatibleLLM)
 from .lang import tokenize, jaccard
 
-__version__ = "4.1.0"
+__version__ = "4.2.0"
 __all__ = [
     "Brain", "Node", "Scorer", "Index", "Persona", "Mood", "MemoryHooks",
     "settle", "resonate", "build_pack", "tokenize", "jaccard",
