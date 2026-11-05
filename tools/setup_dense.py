@@ -24,7 +24,7 @@ except (AttributeError, OSError):
 
 def main():
     fp32 = "--fp32" in sys.argv
-    from brain import dense
+    from jeyi import dense
 
     print("① 依赖检查")
     if not dense.available():

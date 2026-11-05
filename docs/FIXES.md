@@ -15,7 +15,7 @@
 - **根因**：`full_cards.jsonl` 只在 `add_node` 时写一次创建快照（status 恒为 live），
   而 `_load()` 把它合并回检索池；`save_live()` 又只写 live 节点，superseded 根本不落盘。
 - **修法**：存储改**事件溯源**——`create` / `patch` / `edge` 追加为不可变事件，加载即重放。
-  `brain/storage.py` 重写；v3 旧库自动迁移。
+  `jeyi/storage.py` 重写；v3 旧库自动迁移。
 - **测试**：`test_B1_superseded_survives_reload`、`test_B9_full_card_is_append_only`。
 
 ### B2 冷启动第一轮检索必空
@@ -98,7 +98,7 @@
 ### B13 中文冲突检测恒为 0
 - **现象**：10 条中文记忆结算后边数 = 0，图是空壳。
 - **根因**：`set(gist.split())`——中文无空格，整句是一个 token，Jaccard 几乎恒为 0。
-- **修法**：所有模块统一走 `brain/lang.tokenize`（二元组 + 内容字一元组 + 停用词）。
+- **修法**：所有模块统一走 `jeyi/lang.tokenize`（二元组 + 内容字一元组 + 停用词）。
 - **测试**：`test_B13_edges_are_real`、`test_B14_conflict_detection_on_chinese`。
 
 ### B14 `graph` 恒为 1.0，扩散/侧抑制是死代码
@@ -128,7 +128,7 @@
 ### B17 长时程行为根本无法验证
 - **现象**：引擎到处直接调 `time.time()`，衰减/归档/到期提醒/周年回响都是长时程行为，
   在真实时间里等半年不是测试，所以这部分从来没被验证过。
-- **修法**：新增 `brain/clock.py`（唯一时间源 + 可注入 `VirtualClock`），
+- **修法**：新增 `jeyi/clock.py`（唯一时间源 + 可注入 `VirtualClock`），
   所有模块改为 `clock.now()`；`tools/simulate.py` 用它把一年压进 3 秒逐日推进。
 - **测试**：`test_virtual_clock_drives_decay`、`test_due_commitment_fires_on_due_date`、
   `tools/simulate.py` 的 5 条不变量。
@@ -165,7 +165,8 @@
 
 ### B22 稠密分直接覆盖词法分（v4.2）
 - **现象**：接入 bge-small 后主集 96.2% → 86.8%，弃答 100% → 0%。
-- **根因**：el = max(sparse, dense)。两个余弦不在同一尺度，稠密会把词法的正确排序整个盖掉；
+- **根因**：
+el = max(sparse, dense)。两个余弦不在同一尺度，稠密会把词法的正确排序整个盖掉；
   且低于阈值的稠密候选仍当扩散种子，把邻居拉进注入包。
 - **修法**：改 RRF 名次融合（词法第 1 名推不倒）；准入门槛用**原始分**而不是 RRF 值；
   种子要求"有词面信号或稠密过线"。
@@ -252,8 +253,8 @@
 |----|------|
 | 不是 git 仓库 | `git init` + `.gitignore` + 首次提交 |
 | 无 LICENSE | 补 MIT（并保留 dsh-identity 血缘署名） |
-| Windows 下测试退出码 1 | `tests/test_brain.py` 开头 `sys.stdout.reconfigure(encoding="utf-8")` |
-| UI 是手写假数据 | `tools/export_map.py` 从引擎导出 `ui/brain_map_live.html`（数据/边/统计全真） |
+| Windows 下测试退出码 1 | `tests/test_jeyi.py` 开头 `sys.stdout.reconfigure(encoding="utf-8")` |
+| UI 是手写假数据 | `tools/export_map.py` 从引擎导出 `ui/map_live.html`（数据/边/统计全真） |
 | UI 边类型无默认长度 → NaN | 物理常量表加 `topic`/`entity` 并给 `|| 110` 兜底 |
 | UI 另写一套打分公式 | 改为 v4 结构（rel/prior/graph）并在页面标注权威数字以 bench 为准 |
 | 文档三处公式打架 | README 与 design-spec 统一到 v4 公式 |

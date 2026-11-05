@@ -4,9 +4,9 @@
 这个守护进程负责三件事：
   1. **单实例**：端口已被占用就不再起第二个；
   2. **挂了自动重启**：子进程退出 → 3 秒后重来；连续快速崩溃则指数退避，不刷屏；
-  3. **日志滚动**：写到 ~/.memory-brain/logs/sidecar.log，超过 5MB 轮转一次。
+  3. **日志滚动**：写到 ~/.jeyi/logs/sidecar.log，超过 5MB 轮转一次。
 
-配置（~/.memory-brain/config.json，由 tools/install_autostart.py 生成）：
+配置（~/.jeyi/config.json，由 tools/install_autostart.py 生成）：
     {"port": 8765, "store": "...", "dense": true, "budget": 300, "token": ""}
 
 手动跑：
@@ -24,7 +24,7 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HOME = os.path.join(os.path.expanduser("~"), ".memory-brain")
+HOME = os.path.join(os.path.expanduser("~"), ".jeyi")
 CONFIG = os.path.join(HOME, "config.json")
 LOGS = os.path.join(HOME, "logs")
 LOG_MAX = 5 * 1024 * 1024
@@ -72,7 +72,7 @@ def main():
         return 0
 
     py = sys.executable
-    cmd = [py, "-m", "brain.serve", "--port", str(port),
+    cmd = [py, "-m", "jeyi.serve", "--port", str(port),
            "--store", cfg["store"], "--budget", str(cfg.get("budget", 300))]
     if cfg.get("dense"):
         cmd.append("--dense")

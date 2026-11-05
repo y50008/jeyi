@@ -1,6 +1,6 @@
 """tools/export_map.py — 把引擎里的真实记忆导出成脑图（v4.0 新增）
 
-v3 的 ui/brain_map.html 里是 31 条手写节点 + 32 条手写边，并在 JS 里另写了一遍打分公式，
+v3 的 ui/map.html 里是 31 条手写节点 + 32 条手写边，并在 JS 里另写了一遍打分公式，
 与 Python 引擎零连接——页面上的数字是"演示值"，不是测量值。
 v4 用这个脚本把引擎导出成自包含 HTML：数据、边、统计全部来自真实引擎。
 
@@ -18,7 +18,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from brain import MemoryHooks, JsonlStorage, __version__      # noqa: E402
+from jeyi import MemoryHooks, JsonlStorage, __version__      # noqa: E402
 
 # 内置语料：本项目自己的历史（与 topic/ 文档一致），用来演示"记忆长什么样"
 DEMO = [
@@ -62,8 +62,8 @@ def load_store(path):
 
 
 def export(ag, out_path):
-    """引擎快照 → 自包含 HTML。与 sidecar 的实时面板共用 brain/viz.py。"""
-    from brain import viz
+    """引擎快照 → 自包含 HTML。与 sidecar 的实时面板共用 jeyi/viz.py。"""
+    from jeyi import viz
     data = viz.payload(ag)
     html = viz.render_html(data, live=False)
     with open(out_path, "w", encoding="utf-8") as f:
@@ -73,7 +73,7 @@ def export(ag, out_path):
 def main():
     args = sys.argv[1:]
     store = None
-    out = os.path.join(ROOT, "ui", "brain_map_live.html")
+    out = os.path.join(ROOT, "ui", "map_live.html")
     for i, a in enumerate(args):
         if a == "--store" and i + 1 < len(args):
             store = args[i + 1]

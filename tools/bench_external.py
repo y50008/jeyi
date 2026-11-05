@@ -31,10 +31,10 @@ try:
 except (AttributeError, OSError):
     pass
 
-from brain import MemoryHooks                      # noqa: E402
-from brain import dense as dense_mod        # noqa: E402
+from jeyi import MemoryHooks                      # noqa: E402
+from jeyi import dense as dense_mod        # noqa: E402
 
-CACHE = os.path.join(os.path.expanduser("~"), ".cache", "memory-brain", "bench")
+CACHE = os.path.join(os.path.expanduser("~"), ".cache", "jeyi", "bench")
 
 _MONTHS = {m: i + 1 for i, m in enumerate(
     ["january", "february", "march", "april", "may", "june", "july", "august",

@@ -1,8 +1,8 @@
 """install_autostart.py — 一键把记忆侧车设成开机自启（Windows 登录启动）
 
 做三件事：
-  1. 写配置 `~/.memory-brain/config.json`（端口、库路径、是否开稠密）；
-  2. 在「启动」文件夹放一个**不弹窗**的 `memory-brain.vbs`，登录即静默启动守护进程；
+  1. 写配置 `~/.jeyi/config.json`（端口、库路径、是否开稠密）；
+  2. 在「启动」文件夹放一个**不弹窗**的 `jeyi.vbs`，登录即静默启动守护进程；
   3. 立刻后台拉起来并自检 `/v1/health`。
 
 为什么用 VBS 而不是快捷方式：快捷方式会闪一个黑框；VBS 用
@@ -26,7 +26,7 @@ import time
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HOME = os.path.join(os.path.expanduser("~"), ".memory-brain")
+HOME = os.path.join(os.path.expanduser("~"), ".jeyi")
 CONFIG = os.path.join(HOME, "config.json")
 DAEMON = os.path.join(ROOT, "tools", "serve_daemon.py")
 DEFAULTS = {"port": 8765, "store": os.path.join(ROOT, "data", "peers"),
@@ -40,7 +40,7 @@ def startup_dir() -> str:
 
 
 def vbs_path() -> str:
-    return os.path.join(startup_dir(), "memory-brain.vbs")
+    return os.path.join(startup_dir(), "jeyi.vbs")
 
 
 def python_exe() -> str:
@@ -75,7 +75,7 @@ def write_vbs():
     py = python_exe()
     cmd = f'"{py}" "{DAEMON}"'
     content = (
-        "' memory-brain 记忆侧车：登录时静默启动（删掉本文件即可取消自启）\r\n"
+        "' jeyi 记忆侧车：登录时静默启动（删掉本文件即可取消自启）\r\n"
         'Set sh = CreateObject("WScript.Shell")\r\n'
         f'sh.CurrentDirectory = "{ROOT}"\r\n'
         f'sh.Run "{cmd}", 0, False\r\n'

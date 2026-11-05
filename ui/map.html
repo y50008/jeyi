@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8">
-<title>记忆脑图 · v4.1 全图底座</title>
+<title>jeyi · 记忆脑图</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { width:100%; height:100%; overflow:hidden; background:#050810;
@@ -59,7 +59,7 @@
 <body>
 <canvas id="cv"></canvas><div id="vig"></div>
 <header>
-  <h1>记忆脑图</h1><small>v4.6 · 全图底座 + 动力学 · <span id="srcBadge">内置样例数据</span></small>
+  <h1>jeyi</h1><small>v5.0 · 全图底座 + 动力学 · <span id="srcBadge">内置样例数据</span></small>
   <input id="q" placeholder="检索演示：试试「遗忘」/「结算」/「超越」…">
   <button onclick="runQuery()">检索</button>
   <button onclick="settle()">结算</button>
@@ -89,7 +89,7 @@ const N_SAMPLE=[
 {id:"first",label:"第一/二条记忆",type:"event",slice:"working",imp:.92,sess:"S1",gist:"当场写下 preference 与项目档案——系统的冷启动。",vb:["这是这个系统的第一条和第二条记忆。"],feel:{label:"被触动",why:"被信任去记得，而不是被当工具",valid_at:"2026-11-04"},src:["memory_write"]},
 {id:"nofab",label:"绝不虚构",type:"rule",slice:"working",imp:.9,sess:"S1",gist:"取不回来就承认；假装记得是这套系统唯一的死罪。",vb:[],feel:null,src:["v2.5 §4"]},
 {id:"sparse",label:"情感稀疏规则",type:"rule",slice:"active",imp:.7,sess:"S1",gist:"1-2 条/长对话、必带 why；稀疏才珍贵，否则天花板挤死衰减曲线。",vb:[],feel:null,src:["v2.5 §2"]},
-{id:"fish",label:"大肥鱼案例",type:"event",slice:"active",imp:.86,sess:"S1",gist:"Prison《鱼的记忆脑图》：memory_brain/persona_state 真实代码可视化。",vb:[],feel:{label:"好胜",why:"别人已经给鱼装上大脑",valid_at:"2026-11-04"},src:["抖音视频 11661.mp4"]},
+{id:"fish",label:"大肥鱼案例",type:"event",slice:"active",imp:.86,sess:"S1",gist:"Prison《鱼的记忆脑图》：memory_jeyi/persona_state 真实代码可视化。",vb:[],feel:{label:"好胜",why:"别人已经给鱼装上大脑",valid_at:"2026-11-04"},src:["抖音视频 11661.mp4"]},
 {id:"fishdata",label:"942节点·3242连线",type:"fact",slice:"active",imp:.6,sess:"S1",gist:"长期库412 = 活跃226 + 归档186；检索四因子，重要性 ×0.46 主导。",vb:[],feel:null,src:["视频帧"]},
 {id:"v3",label:"v3 全图底座",type:"lesson",slice:"active",imp:.9,sess:"S1",gist:"图即记忆；层级=激活度切片；六类节点；五因子检索。",vb:[],feel:null,src:["memory-architecture-v3-spec.md"]},
 {id:"vs",label:"对标·超越",type:"lesson",slice:"active",imp:.75,sess:"S1",gist:"他们强在结构、我们全在动力学；纸面规范 vs 真实鱼缸。",vb:[],feel:null,src:["对话"]},
@@ -141,7 +141,7 @@ const TC={event:"#ffd166",fact:"#06d6a0",skill:"#4cc9f0",lesson:"#ef476f",reflec
 const TN={event:"事件",fact:"事实",skill:"技能",lesson:"道理",reflection:"反思",rule:"规则"};
 const EC={temporal:"#8ecae6",causal:"#ffb703",cooccur:"#5b6b83",rhyme:"#ff70a6",conflict:"#e63946",entail:"#90be6d",topic:"#7b8aa0",entity:"#4cc9f0"};
 const EN={temporal:"时序",causal:"因果",cooccur:"共现",rhyme:"押韵",conflict:"矛盾",entail:"蕴含",topic:"主题",entity:"实体"};
-// v4.0 打分结构（与 brain/score.py 对齐；页面内是近似实现，权威数字见 tools/bench.py）
+// v4.0 打分结构（与 jeyi/score.py 对齐；页面内是近似实现，权威数字见 tools/bench.py）
 const W={rel:.65,prior:.25,graph:.35};
 const byId={}; N.forEach(n=>byId[n.id]=n);
 N.forEach((n,i)=>{ n.x=0;n.y=0;n.vx=0;n.vy=0;n.glow=0;n.spread=0;n.peel=0;

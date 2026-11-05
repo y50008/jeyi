@@ -1,4 +1,4 @@
-"""tools/fetch_bench.py — 下载公开记忆基准（放到 ~/.cache/memory-brain/bench/）
+"""tools/fetch_bench.py — 下载公开记忆基准（放到 ~/.cache/jeyi/bench/）
 
 LoCoMo（2.8MB，推荐先跑）：10 段长对话 / ~2000 条 QA / 多跳·时序·对抗
 LongMemEval-S（278MB）：500 问，每问带一整套干扰会话，检索难度最高
@@ -16,8 +16,8 @@ import sys
 import time
 import urllib.request
 
-CACHE = os.path.join(os.path.expanduser("~"), ".cache", "memory-brain", "bench")
-UA = {"User-Agent": "Mozilla/5.0 memory-brain/bench"}
+CACHE = os.path.join(os.path.expanduser("~"), ".cache", "jeyi", "bench")
+UA = {"User-Agent": "Mozilla/5.0 jeyi/bench"}
 
 SOURCES = {
     "locomo": [

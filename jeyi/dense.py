@@ -19,7 +19,7 @@ import math
 import os
 import urllib.request
 
-_CACHE_ROOT = os.path.join(os.path.expanduser("~"), ".cache", "memory-brain")
+_CACHE_ROOT = os.path.join(os.path.expanduser("~"), ".cache", "jeyi")
 
 # 同一套 bge-small 的两个语言版本，都是 24MB int8。
 # 关键：**模型语言必须和语料语言一致**。用中文模型跑英文基准，
@@ -31,7 +31,7 @@ MODEL_REPOS = {
 DEFAULT_KIND = "zh"
 DEFAULT_MODEL_DIR = os.path.join(_CACHE_ROOT, MODEL_REPOS[DEFAULT_KIND][1])
 MODEL_FILES = ("model_int8.onnx", "model_quantized.onnx", "model.onnx")   # 由省到贵依次尝试
-_UA = {"User-Agent": "Mozilla/5.0 memory-brain/dense"}
+_UA = {"User-Agent": "Mozilla/5.0 jeyi/dense"}
 
 
 def model_dir_for(kind: str = DEFAULT_KIND) -> str:

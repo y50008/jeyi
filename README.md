@@ -1,15 +1,15 @@
-memory-brain-agent · v4.6 记忆脑图引擎
+jeyi · v5.0 记忆脑图引擎
 ========================================
 哲学：发现现成的，超越现成的——**超越必须接受检验**。
 
 30 秒上手
 --------
-`ash
-git clone https://github.com/y50008/memory-brain-agent.git
-cd memory-brain-agent
+```bash
+git clone https://github.com/y50008/jeyi.git
+cd jeyi
 python demo.py                 # 零依赖，立刻能跑
-python tests/test_brain.py     # 40/40
-`
+python tests/test_jeyi.py     # 40/40
+```
 想要更高召回：pip install -e ".[dense]" && python tools/setup_dense.py（24MB 本地模型）。
 
 - **介绍**（这是什么、和别的方案比、数字怎么读）→ [docs/INTRO.md](docs/INTRO.md)
@@ -23,7 +23,7 @@ python tests/test_brain.py     # 40/40
 每一次回复只注入 ≤300 字的记忆（不随对话历史增长），
 换来的是一条可检索、可衰减、可改口、可审计的记忆图谱。
 
-v4.6 的核心变化：**"打分/选包"重做成可测量的检索系统**，补上 v3.1.1 缺失的检验
+v5.0 的核心变化：**"打分/选包"重做成可测量的检索系统**，补上 v3.1.1 缺失的检验
 （主集 + 留出集 + 一年时间线三套），并在不牺牲弃答的前提下把留出集从 77.8% 提到 85.2%。
 
 先看数字（合成语料，见 docs/VALIDATION.md 的诚实声明）
@@ -65,11 +65,11 @@ pip install -e ".[dense]"     # numpy + onnxruntime + tokenizers
 python tools/setup_dense.py   # 下 24MB int8 模型 + 自检语义 + 打印真实延迟
 ```
 ```python
-from brain import MemoryHooks
-from brain import dense
+from jeyi import MemoryHooks
+from jeyi import dense
 ag = MemoryHooks(embedding=dense.make_embedder())   # 装不上就返回 None，自动退回词法
 ```
-不装也完全能跑——`brain/dense.py` 只在依赖与模型都在位时才加载，核心库保持零依赖。
+不装也完全能跑——`jeyi/dense.py` 只在依赖与模型都在位时才加载，核心库保持零依赖。
 
 公开基准（语料由外人提供，`tools/bench_external.py`）
 ----------------------------------------------------
@@ -87,7 +87,7 @@ LongMemEval 的记忆是自包含陈述。我们的记忆写成自包含的 gist
 
 长时程（`python tools/simulate.py`：把一年压进 3 秒）
 ----------------------------------------------------
-可注入时钟（`brain/clock.py`）让"半年后会发生什么"第一次变成可验证的东西：
+可注入时钟（`jeyi/clock.py`）让"半年后会发生什么"第一次变成可验证的东西：
 
 | 天 | 工作 | 活跃 | 归档 | 核心可检索 | 小事已归档 | 小事常规 | 小事显式 |
 |---:|-----:|-----:|-----:|-----------:|-----------:|---------:|---------:|
@@ -101,7 +101,7 @@ LongMemEval 的记忆是自包含陈述。我们的记忆写成自包含的 gist
 但**显式回忆（"你还记得…吗"）能把 18/18 全部取回**——这份记忆卡永远在。
 两条承诺分别在到期前一天被主动提起（`2026-01-09`、`2026-02-28`）。
 
-会话作用域与跨会话同一性（v4.6）
+会话作用域与跨会话同一性（v5.0）
 --------------------------------
 "避免会话之间互相干扰"要同时解决两件事，它们是正交的：
 
@@ -129,22 +129,22 @@ r = ag.before_reply("登录页 花生")
 
 ![实时面板](docs/panel.png)
 
-接入大肥鱼（dsh-identity，v4.6）
+接入大肥鱼（dsh-identity，v5.0）
 ----------------------------
 [dsh-identity](https://github.com/Anarrogantcat/dsh-identity)（MIT，「大肥鱼 · 身份系统」）
 自带一套记忆实现，没有留插拔点。但我们**不需要它配合**：它的 lib/memory.js 是一组具名导出，
 换掉这一个文件就能只替换"哪几条记忆进上下文"这一层，index.js 一行不改。
 
-`ash
+```bash
 # 1. 起引擎（另开终端或开机自启）
-python -m brain.serve --port 8765 --store ./data/peers --dense
+python -m jeyi.serve --port 8765 --store ./data/peers --dense
 # 2. 把桥装进大肥鱼
 cd <dsh-identity>/lib && mv memory.js memory.orig.js
-cp <memory-brain>/integration/dsh-identity/memory.bridge.js ./memory.js
-cp <memory-brain>/integration/dsh-identity/memory.fetch-worker.mjs ./
+cp <jeyi>/integration/dsh-identity/memory.bridge.js ./memory.js
+cp <jeyi>/integration/dsh-identity/memory.fetch-worker.mjs ./
 # 3. 用大肥鱼真实的 memory.js 做对照验证
 python tools/verify_fish_bridge.py --fish <dsh-identity 包目录> --dense
-`
+```
 
 实测（跑的是它自己的模块和存储）：**原实现 3/4，桥接 4/4**——
 多跳问句「我家猫身体有什么问题」原实现返回空，因为我们把「猫→团子→海鲜过敏」
@@ -157,7 +157,7 @@ python tools/verify_fish_bridge.py --fish <dsh-identity 包目录> --dense
 --------
 ```bash
 python demo.py                 # 端到端：写入→建图→检索→多跳→弃答→召回→改口→结算→指标
-python tests/test_brain.py     # 40 项测试（无 pytest 依赖）
+python tests/test_jeyi.py     # 40 项测试（无 pytest 依赖）
 python tools/bench.py          # 检索质量基准（主集）：v3 基线 vs v4 vs 整段上下文
 python tools/bench.py --holdout# 留出集：泛化能力的诚实读数
 python tools/bench.py --dense --holdout  # 稠密混合（需先 setup_dense，venv 里跑）
@@ -165,13 +165,13 @@ python tools/fetch_bench.py --dataset locomo       # 下公开基准（2.8MB）
 python tools/bench_external.py --dataset locomo --dense --lang en
 python tools/simulate.py       # 一年时间线：衰减/归档/到期提醒/显式回忆
 python tools/replay.py         # 多轮会话回放：看注入包与省下的 token
-python tools/export_map.py     # 导出真实脑图 → ui/brain_map_live.html（双击即看）
+python tools/export_map.py     # 导出真实脑图 → ui/map_live.html（双击即看）
 ```
 
 接入你的 Agent（四个钩子）
 -------------------------
 ```python
-from brain import MemoryHooks
+from jeyi import MemoryHooks
 
 ag = MemoryHooks(store_dir="./data")          # 零依赖，默认 JSONL 事件溯源
 
@@ -196,7 +196,7 @@ ag.on_session_end()                           # 五步结算 + 归档 + 落盘
 | 衰减/注入常数 | 30 天半衰期、300 字预算 | 用 `tools/bench.py` 在你自己的数据上重校准 |
 
 ```python
-from brain import MemoryHooks, SqliteStorage, OpenAICompatibleEmb, OpenAICompatibleLLM
+from jeyi import MemoryHooks, SqliteStorage, OpenAICompatibleEmb, OpenAICompatibleLLM
 ag = MemoryHooks(storage=SqliteStorage("./data/brain.db"),
                  embedding=OpenAICompatibleEmb("https://api.example.com", "KEY", "bge-small"),
                  judge=OpenAICompatibleLLM("https://api.example.com", "KEY", "your-model"))
@@ -214,17 +214,17 @@ ag = MemoryHooks(storage=SqliteStorage("./data/brain.db"),
 
 | 模块 | 职责 | v4 关键点 |
 |------|------|-----------|
-| `brain/clock.py` | 唯一时间源 | 可注入虚拟时钟，长时程行为变成可验证 |
-| `brain/dense.py` | 稠密检索（可选） | 本地 ONNX 句向量（中/英两版）+ numpy 向量索引；不装依赖时整层不加载 |
-| `brain/lang.py` | 文本原语 | 全项目唯一分词器；中文二元组+内容字一元组+停用词 |
-| `brain/core.py` | 全图底座 | 节点/真实边/状态机/按天归档/三切片/`due_at` |
-| `brain/score.py` | 检索 | 倒排索引、tf-idf 余弦门控、**可用的**扩散激活与侧抑制、显式回忆 |
-| `brain/pack.py` | 选包 | 预算内 MMR、会话去重、必含桶（召回/纠错/到期） |
-| `brain/settle.py` | 结算 | 五步结算、idf 加权冲突候选、图式挂载、回响 |
-| `brain/hooks.py` | 四钩子 | 写入抽取器、注入编排、召回协议闭环 |
-| `brain/storage.py` | 持久化 | 事件溯源（create/patch/edge）、SQLite WAL、v3 迁移 |
-| `brain/persona.py` | 人格层 | 证据制 traits、心情半衰、偏置封顶 |
-| `brain/adapters.py` | 适配 | embedding / LLM / 冲突复核 |
+| `jeyi/clock.py` | 唯一时间源 | 可注入虚拟时钟，长时程行为变成可验证 |
+| `jeyi/dense.py` | 稠密检索（可选） | 本地 ONNX 句向量（中/英两版）+ numpy 向量索引；不装依赖时整层不加载 |
+| `jeyi/lang.py` | 文本原语 | 全项目唯一分词器；中文二元组+内容字一元组+停用词 |
+| `jeyi/core.py` | 全图底座 | 节点/真实边/状态机/按天归档/三切片/`due_at` |
+| `jeyi/score.py` | 检索 | 倒排索引、tf-idf 余弦门控、**可用的**扩散激活与侧抑制、显式回忆 |
+| `jeyi/pack.py` | 选包 | 预算内 MMR、会话去重、必含桶（召回/纠错/到期） |
+| `jeyi/settle.py` | 结算 | 五步结算、idf 加权冲突候选、图式挂载、回响 |
+| `jeyi/hooks.py` | 四钩子 | 写入抽取器、注入编排、召回协议闭环 |
+| `jeyi/storage.py` | 持久化 | 事件溯源（create/patch/edge）、SQLite WAL、v3 迁移 |
+| `jeyi/persona.py` | 人格层 | 证据制 traits、心情半衰、偏置封顶 |
+| `jeyi/adapters.py` | 适配 | embedding / LLM / 冲突复核 |
 
 三通道与双卡制（设计意图，v4 才真正接通）
 ----------------------------------------
@@ -248,12 +248,12 @@ ag = MemoryHooks(storage=SqliteStorage("./data/brain.db"),
 目录
 ----
 ```
-brain/            引擎（clock/lang/core/score/pack/settle/hooks/storage/persona/adapters）
+jeyi/            引擎（clock/lang/core/score/pack/settle/hooks/storage/persona/adapters）
 tests/            36 项测试
 tools/            bench.py 基准 · bench_external.py 公开基准 · fetch_bench.py 下载
                   export_map.py 导出脑图 · ci_gate.py 质量门禁
-ui/brain_map.html 脑图模板（无外部依赖）
-ui/brain_map_live.html  由引擎导出生成的真实脑图
+ui/map.html 脑图模板（无外部依赖）
+ui/map_live.html  由引擎导出生成的真实脑图
 demo.py           端到端演示
 ```
 

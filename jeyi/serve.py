@@ -11,7 +11,7 @@ Node 那边用 `fetch` 调几行，我们的引擎一点不改。
   · 所有接口幂等或可重放，失败时对方可以直接回退到自己的实现。
 
 启动：
-    python -m brain.serve --port 8765 --store ./data/peers
+    python -m jeyi.serve --port 8765 --store ./data/peers
 接口：
     GET  /v1/health
     POST /v1/add     {peer, text, importance?, origin?, quote?, at?}
@@ -31,8 +31,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from brain import MemoryHooks, JsonlStorage          # noqa: E402
-from brain import viz                                 # noqa: E402
+from jeyi import MemoryHooks, JsonlStorage          # noqa: E402
+from jeyi import viz                                 # noqa: E402
 
 DEFAULT_STORE = os.path.join(os.getcwd(), "data", "peers")
 
@@ -113,7 +113,7 @@ def _op_recall(store: PeerStore, body: dict) -> dict:
     # 允许调用方按自己的数据调稠密闸门（0.30~0.90）。
     # 默认 0.58 是"弃答准确率 100%"下选出来的；放宽能多召回改写句，代价是可能硬凑。
     floor = body.get("dense_floor")
-    from brain import score as _score
+    from jeyi import score as _score
     old = _score.DENSE_FLOOR
     if floor is not None:
         _score.DENSE_FLOOR = max(0.30, min(0.90, float(floor)))
@@ -202,7 +202,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         if path == "/v1/health":
-            return self._send(200, {"ok": True, "service": "memory-brain", "version": "4.6"})
+            from jeyi import __version__
+            return self._send(200, {"ok": True, "service": "jeyi",
+                                    "version": __version__})
         if path == "/v1/peers":
             return self._send(200, {"ok": True, "peers": self.store.peers()})
         if path == "/v1/graph":
@@ -253,13 +255,13 @@ def serve(port: int = 8765, store_dir: str = DEFAULT_STORE, budget: int = 300,
           token: str = "", dense: bool = False):
     embedding = None
     if dense:
-        from brain import dense as dense_mod
+        from jeyi import dense as dense_mod
         embedding = dense_mod.make_embedder()
     st = PeerStore(store_dir, budget=budget, embedding=embedding)
     Handler.store = st
     Handler.token = token
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"memory-brain sidecar on http://127.0.0.1:{port}  "
+    print(f"jeyi sidecar on http://127.0.0.1:{port}  "
           f"store={store_dir}  dense={'on' if embedding else 'off'}", flush=True)
     try:
         httpd.serve_forever()
@@ -274,7 +276,7 @@ def main():
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--store", default=DEFAULT_STORE)
     ap.add_argument("--budget", type=int, default=300)
-    ap.add_argument("--token", default=os.environ.get("MEMORY_BRAIN_TOKEN", ""))
+    ap.add_argument("--token", default=os.environ.get("JEYI_TOKEN", ""))
     ap.add_argument("--dense", action="store_true")
     a = ap.parse_args()
     serve(a.port, a.store, a.budget, a.token, a.dense)

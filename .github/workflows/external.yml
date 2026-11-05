@@ -22,7 +22,7 @@ jobs:
           python - <<'PY'
           import sys
           sys.path.insert(0, ".")
-          from brain import dense
+          from jeyi import dense
           dense.download(kind="en")
           PY
           python tools/fetch_bench.py --dataset ${{ github.event.inputs.dataset }}

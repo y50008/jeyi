@@ -49,7 +49,7 @@ function run(mod, peer, tag) {
 const pOrig = 'verify-orig'
 const pBrid = 'verify-bridge'
 const passOrig = run(orig, pOrig, '原实现 lib/memory.orig.js')
-const passBrid = run(bridge, pBrid, '桥接 memory-brain')
+const passBrid = run(bridge, pBrid, '桥接 jeyi')
 
 const card = bridge.memoryCard(pBrid, CFG, '我家猫身体有什么问题')
 console.log('\n== 记忆卡（桥接）==')

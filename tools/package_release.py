@@ -29,7 +29,7 @@ KEEP_NAMES = {"LICENSE", "Dockerfile", ".gitignore", ".gitattributes"}
 def version() -> str:
     try:
         sys.path.insert(0, ROOT)
-        from brain import __version__
+        from jeyi import __version__
         return __version__
     except Exception:
         return "0.0.0"
@@ -64,7 +64,7 @@ def main():
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     ver = version()
-    name = f"memory-brain-agent-v{ver}"
+    name = f"jeyi-v{ver}"
     zip_path = os.path.join(a.out, name + ".zip")
 
     files = collect()

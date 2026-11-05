@@ -24,4 +24,4 @@ jobs:
       - name: gate (holdout, dense)
         run: python tools/ci_gate.py holdout-dense.json --holdout
       - name: tests with dense
-        run: python tests/test_brain.py
+        run: python tests/test_jeyi.py

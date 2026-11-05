@@ -1,14 +1,14 @@
 /**
- * memory.bridge.js — 把「大肥鱼 · 身份系统」的记忆选层接到 memory-brain 引擎上
+ * memory.bridge.js — 把「大肥鱼 · 身份系统」的记忆选层接到 jeyi 引擎上
  *
  * 这是什么：`dsh-identity` 的 `lib/memory.js` 的**同接口替身**。
  * 原实现原封不动地留着（改名为 `memory.orig.js`），只把「哪几条记忆该进上下文」
- * 这一步（`recall` / `memoryCard`）换成 memory-brain 来算；
+ * 这一步（`recall` / `memoryCard`）换成 jeyi 来算；
  * 写入、面板、纠正、遗忘、钉住、统计、全量卡……全部仍走原实现。
  *
  * 为什么只接管这一段：
  *   原公式 P = C×(0.05+0.45A+0.35I+0.15E)，C = s/(s+K) 会饱和——
- *   单关键词命中会被 0.15 的门槛切掉（memory-brain 的 v3 就是死在这上面）。
+ *   单关键词命中会被 0.15 的门槛切掉（jeyi 的 v3 就是死在这上面）。
  *   而且它没有稠密语义、没有会话作用域、没有图扩散、没有跨会话同一性。
  *   这几项正好是我们的强项，而写入/管理/面板完全不需要动。
  *
@@ -19,10 +19,10 @@
  *   cp .../memory.fetch-worker.mjs ./memory.fetch-worker.mjs
  *
  * 配置（环境变量）：
- *   MEMORY_BRAIN_URL=http://127.0.0.1:8765   引擎地址
- *   MEMORY_BRAIN_TOKEN=...                   可选，X-Memory-Token
- *   MEMORY_BRAIN=off                         1/off 时完全退回原实现
- *   MEMORY_BRAIN_TIMEOUT=400                 单次请求超时（毫秒）
+ *   JEYI_URL=http://127.0.0.1:8765   引擎地址
+ *   JEYI_TOKEN=...                   可选，X-Memory-Token
+ *   JEYI=off                         1/off 时完全退回原实现
+ *   JEYI_TIMEOUT=400                 单次请求超时（毫秒）
  *
  * 约定：**任何异常都不影响大肥鱼跑**。引擎不可用/超时/脏数据 → 静默退回原实现。
  */
@@ -31,10 +31,10 @@ import { Worker, MessageChannel, receiveMessageOnPort } from 'node:worker_thread
 
 import * as base from './memory.orig.js'
 
-const URL_BASE = (process.env.MEMORY_BRAIN_URL || 'http://127.0.0.1:8765').replace(/\/+$/, '')
-const TOKEN = process.env.MEMORY_BRAIN_TOKEN || ''
-const OFF = ['off', '0', 'false'].includes(String(process.env.MEMORY_BRAIN || '').toLowerCase())
-const TIMEOUT = Math.max(50, Number(process.env.MEMORY_BRAIN_TIMEOUT || 400))
+const URL_BASE = (process.env.JEYI_URL || 'http://127.0.0.1:8765').replace(/\/+$/, '')
+const TOKEN = process.env.JEYI_TOKEN || ''
+const OFF = ['off', '0', 'false'].includes(String(process.env.JEYI || '').toLowerCase())
+const TIMEOUT = Math.max(50, Number(process.env.JEYI_TIMEOUT || 400))
 
 // ── 同步桥：worker 里异步 fetch，主线程同步取 ──────────────────────────────
 let port1 = null

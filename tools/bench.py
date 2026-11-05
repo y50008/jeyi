@@ -18,8 +18,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from brain import MemoryHooks, tokenize            # noqa: E402
-from brain.core import DAY                        # noqa: E402
+from jeyi import MemoryHooks, tokenize            # noqa: E402
+from jeyi.core import DAY                        # noqa: E402
 
 # ------------------------------------------------------------------ 语料
 # (口语原句, 金标标签)。金标标签用于在注入包里认出"这条是不是该命中的记忆"。
@@ -302,7 +302,7 @@ def main():
     dense_mode = "--dense" in sys.argv
     emb = None
     if dense_mode:
-        from brain import dense as _dense
+        from jeyi import dense as _dense
         emb = _dense.make_embedder()
         if emb is None:
             print("[dense] 模型或依赖缺失，先跑 python tools/setup_dense.py")

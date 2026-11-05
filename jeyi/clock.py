@@ -9,7 +9,7 @@
 到期承诺有没有在正确的那天浮出来。这是"记住几个月"这句承诺唯一可验证的方式。
 
 用法：
-    from brain import clock
+    from jeyi import clock
     clock.set_clock(clock.VirtualClock("2026-01-01").now)   # 模拟
     clock.reset()                                            # 恢复真实时间
 """

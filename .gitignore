@@ -18,7 +18,7 @@ live_cards.json
 full_cards.jsonl
 
 # 导出产物（可用 tools/export_map.py 重新生成）
-ui/brain_map_live.html
+ui/map_live.html
 
 # 编辑器 / 系统
 .vscode/

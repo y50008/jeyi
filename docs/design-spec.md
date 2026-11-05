@@ -1,21 +1,21 @@
-# 设计说明书 · memory-brain-agent v4.6
+# 设计说明书 · jeyi v5.0
 
-> 人工重构的辅助蓝图。逐模块对照重写，行为以 `tests/test_brain.py` 为验收标准。
+> 人工重构的辅助蓝图。逐模块对照重写，行为以 `tests/test_jeyi.py` 为验收标准。
 > 哲学：发现现成的，超越现成的——超越必须接受检验。
 
 ---
 
 ## 软件基本信息
 
-- 全称：memory-brain-agent 记忆脑图引擎
-- 版本：4.6.0
+- 全称：jeyi 记忆脑图引擎
+- 版本：5.0.0
 - 开发目的：为对话型 AI Agent 提供类人长期记忆，用固定的极小上下文预算（≤300 字/轮）
   承载长期经历，并保证可检索、可改口、可审计、可遗忘
 - 运行环境：Python 3.10+，零第三方依赖
 
 ## 一、功能描述
 
-memory-brain-agent 是一套面向对话型 Agent 的长期记忆引擎。它把记忆组织成一张关联图：
+jeyi 是一套面向对话型 Agent 的长期记忆引擎。它把记忆组织成一张关联图：
 节点是记忆条目，边是同句共现、共享罕见实体、蕴含、矛盾、时序等关系；
 工作记忆、活跃记忆、归档记忆不是三套存储，而是同一张图按激活度划分的三个切片。
 写入永远追加、永不删除——遗忘只是可及性下降，不是可用性消失。
@@ -60,30 +60,30 @@ Agent 通过四个钩子接入：写入（on_message）、回复前检索（befo
              │ on_proactive / on_session_end         │
              └──────┬──────────────────────┬─────────┘
                     │                      │
-            brain/hooks.py          brain/settle.py
+            jeyi/hooks.py          jeyi/settle.py
          （抽取、编排、召回闭环）      （五步结算、回响）
                     │                      │
-        brain/pack.py              brain/score.py
+        jeyi/pack.py              jeyi/score.py
       （预算选包、去重、必含桶）   （倒排索引、余弦门控、扩散）
                     └──────────┬───────────┘
                                │
-                    brain/core.py（节点·边·状态机·切片）
+                    jeyi/core.py（节点·边·状态机·切片）
                                │
-              brain/storage.py        brain/lang.py
+              jeyi/storage.py        jeyi/lang.py
           （事件溯源 / SQLite）   （分词·日期·情绪·实体）
                                │
-                        brain/adapters.py
+                        jeyi/adapters.py
                   （embedding / LLM / 冲突复核）
 ```
 
 ## 三、模块设计
 
-### 3.1 brain/clock.py — 唯一时间源
+### 3.1 jeyi/clock.py — 唯一时间源
 职责：`now()` 与可注入的 `VirtualClock`；`set_clock/reset` 供模拟与测试使用。
 重写要点：**任何模块都不得直接调 `time.time()`**。否则衰减、归档、到期提醒、周年回响
 这些长时程行为无法验证（`tools/simulate.py` 靠它把一年压进 3 秒）。
 
-### 3.2 brain/lang.py — 文本原语
+### 3.2 jeyi/lang.py — 文本原语
 职责：分词、停用词、问句/假设判定、日期解析、情绪判定、专名/地点/实体抽取、复述判定用的句尾清洗。
 关键决策：全项目**只此一处**分词。中文按「二元组 + 内容字一元组 + 停用词」处理：
 二元组保短语（"猫叫"），一元组解决跨词命中（"家猫"/"猫叫" 都能命中 "猫"）。
@@ -91,7 +91,7 @@ Agent 通过四个钩子接入：写入（on_message）、回复前检索（befo
 频率副词（一般/平时/经常/通常）必须停用，否则「我一般几点下班」会被
 「我周末一般会去…」抢走（留出集实测）。
 
-### 3.3 brain/core.py — 全图底座
+### 3.3 jeyi/core.py — 全图底座
 职责：`Node` 数据结构、节点的增改、带权边的增删与度数上限、四状态机、按天归档。
 关键决策：
 - 边类型 `temporal / cooccur / topic / entail / conflict / entity / rhyme / causal`，
@@ -101,7 +101,7 @@ Agent 通过四个钩子接入：写入（on_message）、回复前检索（befo
 - 三切片：`slice_pass()` 把最近 7 天最活跃的 5 条放进 working，其余回 active；
 - 状态变更一律经 `_touch()` 产出 `patch` 事件。
 
-### 3.4 brain/score.py — 检索
+### 3.4 jeyi/score.py — 检索
 职责：倒排索引、相关度、稠密召回、RRF 融合、扩散、显式回忆。
 公式：
 ```
@@ -121,34 +121,34 @@ score = (0.65·rel + 0.25·prior + 0.35·graph) · align · (0.55 if 归档)
   （主集实测 96.2 → 86.8）；准入必须用原始分，RRF 值是名次归一化，第一名恒有 0.5 起；
 - 种子可以弱（弱词面命中是扩散桥），但**低于阈值的稠密候选绝不能当种子**，否则弃答会被灌满。
 
-### 3.5 brain/pack.py — 注入选包
+### 3.5 jeyi/pack.py — 注入选包
 职责：预算内选包、冗余抑制、会话去重、必含桶、person floor。
 关键决策：必含桶（召回/纠错/到期）先入且不被挤掉；MMR 惩罚冗余；
 会话内不重复注入（模型上下文里已有），8 轮后放行；纯图入包每轮 ≤1 条；
 person floor 只在"纯社交轮且一条未命中"时补最显著者——绝不按插入顺序取最老的。
 
-### 3.6 brain/settle.py — 结算与回响
+### 3.6 jeyi/settle.py — 结算与回响
 职责：五步结算、冲突候选、图式挂载、回响触发。
 关键决策：冲突只标记不自动定论；反思节点只由锚点+gist 生成，禁自由发挥；
 预算 `nodes≤5 / edges≤6`；回响按优先级（到期承诺 > Zeigarnik > 日期 > 情感）取前 2 条。
 
-### 3.7 brain/hooks.py — Agent 挂接层
+### 3.7 jeyi/hooks.py — Agent 挂接层
 职责：四钩子、写入抽取器、注入编排、召回协议、指标。
 关键决策：只对**真正进入注入包**的节点计复述；`[[recall:]]` 的结果缓存到 `pending`
 并在下一轮强制注入；所有自动抽取节点标 `about_person=True` 但不再因此被无脑注入。
 
-### 3.8 brain/storage.py — 事件溯源
+### 3.8 jeyi/storage.py — 事件溯源
 接口：`append(ev)` / `events()` / `save_snapshot(nodes)`。
 事件：`{"op":"create","node":{...}}`、`{"op":"patch","id":..,"fields":{...}}`、
 `{"op":"edge","a":..,"b":..,"type":..,"w":..}`。
 重写要点：**加载必须靠重放事件**，不能靠"全量卡合并"——否则 superseded 会复活。
 
-### 3.9 brain/persona.py / adapters.py
+### 3.9 jeyi/persona.py / adapters.py
 人格层：证据制 traits（≥3 独立证据才 durable、纯情绪不定型、Owner 否决、90 天退休、
 上限 20、行为偏置合计封顶 ±0.12）。适配层：本地哈希向量（`semantic=False`，不参与稠密检索）、
 OpenAI 兼容 embedding/LLM、启发式冲突复核（阈值 0.45，走统一分词）。
 
-### 3.10 brain/dense.py — 稠密检索（可选层）
+### 3.10 jeyi/dense.py — 稠密检索（可选层）
 职责：本地 ONNX 句向量（bge-small-zh-v1.5 int8，24MB）+ numpy 向量索引 + 远程 embedding 适配。
 关键决策：
 - **不在核心依赖里**：`numpy / onnxruntime / tokenizers` 缺任意一个，整层不加载，引擎退回词法；
@@ -197,7 +197,7 @@ ag.stats() -> {slices, status, nodes, edges, memory_chars,
 
 1. 按依赖顺序重写：`clock → lang → core → score → pack → settle → hooks → storage/adapters`
    （`persona` 可并行）。
-2. 每完成一个模块跑 `python tests/test_brain.py`；**B1–B21 对应的测试是硬契约**，
+2. 每完成一个模块跑 `python tests/test_jeyi.py`；**B1–B21 对应的测试是硬契约**，
    尤其不要退回"全量卡合并加载""seed 取所有命中节点""直接调 time.time()"这三种写法。
 3. 常量集中在各模块顶部（`REL_FLOOR/GRAPH_ADMIT/INJECT_CHARS/ARCHIVE_FRESHNESS…`），
    换语料后用 `python tools/bench.py` 重校准，不要凭感觉改。

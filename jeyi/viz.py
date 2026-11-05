@@ -1,10 +1,10 @@
 """viz.py — 把引擎状态变成脑图数据包（侧车与导出工具共用）
 
 同一个函数喂两条路：
-  · `tools/export_map.py` → 生成静态 `ui/brain_map_live.html`（双击即看）
-  · `brain/serve.py`      → 在 `http://127.0.0.1:8765/` 实时托管面板（自动刷新）
+  · `tools/export_map.py` → 生成静态 `ui/map_live.html`（双击即看）
+  · `jeyi/serve.py`      → 在 `http://127.0.0.1:8765/` 实时托管面板（自动刷新）
 
-数据形状与 `ui/brain_map.html` 约定一致：
+数据形状与 `ui/map.html` 约定一致：
   {meta:{nodes,edges,...}, sess:[{id,label}], nodes:[{id,label,type,slice,imp,sess,gist,vb,feel,src}],
    edges:[[a,b,type,w], ...]}
 """
@@ -14,7 +14,7 @@ import os
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEMPLATE = os.path.join(ROOT, "ui", "brain_map.html")
+TEMPLATE = os.path.join(ROOT, "ui", "map.html")
 
 
 def payload(ag) -> dict:

@@ -1,4 +1,4 @@
-"""tests/test_brain.py — 无 pytest 依赖，直接 python tests/test_brain.py 运行
+"""tests/test_jeyi.py — 无 pytest 依赖，直接 python tests/test_jeyi.py 运行
 
 v4.0 的测试原则：每条对着 v3.1.1 的一个实测缺陷写一条断言（B1–B16，见 docs/FIXES.md），
 再加一条"检索质量"集成门禁（test_bench_quality_gate）——v3 的测试只断言机制存在，
@@ -18,9 +18,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import time
 import tempfile
 
-from brain import MemoryHooks, Brain, SqliteStorage, HashingEmbedding, tokenize
-from brain.core import Node, DAY
-from brain.lang import is_question, find_date, is_planned
+from jeyi import MemoryHooks, Brain, SqliteStorage, HashingEmbedding, tokenize
+from jeyi.core import Node, DAY
+from jeyi.lang import is_question, find_date, is_planned
 
 
 # ---------------------------------------------------------------- v3 契约（保留）
@@ -117,7 +117,7 @@ def test_never_fabricate_archive():
 
 
 def test_sqlite_roundtrip():
-    from brain import SqliteStorage as SS
+    from jeyi import SqliteStorage as SS
     path = os.path.join(tempfile.mkdtemp(), "t.db")
     ag = MemoryHooks(storage=SS(path))
     ag.brain.add_node(label="持久", origin="user", gist="落库测试")
@@ -128,7 +128,7 @@ def test_sqlite_roundtrip():
 
 
 def test_hash_embedding():
-    from brain import cosine
+    from jeyi import cosine
     e = HashingEmbedding()
     v1, v2 = e.embed("我喜欢吃火锅"), e.embed("我喜欢吃火锅")
     assert v1 == v2, "哈希向量应确定性"
@@ -234,7 +234,7 @@ def test_B7_person_floor_cap():
         ag.brain.add_node(label=f"其他事项{i} 的记录", gist=f"其他事项{i} 的记录",
                           origin="user", importance=.9)
     ag.scorer._rebuild()
-    from brain.pack import build
+    from jeyi.pack import build
     ranked = [{"id": p, "label": ag.brain.nodes[p].label, "score": 1.0,
                "decomp": {"rel": 0.5}} for p in pids[:6]]
     out = build(ag.brain, ranked, qtoks=tokenize("用户偏好 记录"), social=True)
@@ -370,7 +370,7 @@ def test_B16_v3_data_migration():
 # ---------------------------------------------------------------- v4.1 长时程能力
 def test_virtual_clock_drives_decay():
     """v4.0 直接调 time.time()，半年后的行为根本没法测。v4.1 引入可注入时钟。"""
-    from brain import clock as ck
+    from jeyi import clock as ck
     vc = ck.VirtualClock("2026-01-01")
     with vc:
         b = Brain()
@@ -392,7 +392,7 @@ def test_virtual_clock_drives_decay():
 
 def test_due_commitment_fires_on_due_date():
     """前瞻记忆：承诺必须在自己那一天浮出来，不能早也不能晚。"""
-    from brain import clock as ck
+    from jeyi import clock as ck
     vc = ck.VirtualClock("2026-01-01")
     with vc:
         ag = MemoryHooks()
@@ -412,7 +412,7 @@ def test_due_commitment_fires_on_due_date():
 
 def test_working_slice_is_populated():
     """三切片里 working 一直为 0 是 v4.0 的遗留缺陷。"""
-    from brain.core import WORKING_CAP
+    from jeyi.core import WORKING_CAP
     ag = MemoryHooks()
     topics = ["火锅", "爬山", "铁观音", "游泳", "摄影", "围棋", "爵士乐", "咖啡",
               "露营", "书法"]
@@ -517,7 +517,7 @@ def test_dense_hybrid_recalls_paraphrase():
     而不去测阈值——阈值是标定出来的工程参数，端到端效果由 bench 覆盖。
     没装模型时优雅跳过（核心库零依赖，装不装都能跑）。
     """
-    from brain import dense
+    from jeyi import dense
     if not (dense.available() and dense.model_present()):
         print("skip 稠密模型未安装（需要时跑：python tools/setup_dense.py）")
         return

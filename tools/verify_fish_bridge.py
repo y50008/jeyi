@@ -1,4 +1,4 @@
-"""tools/verify_fish_bridge.py — 一键复现「大肥鱼 × memory-brain」的对接验证
+"""tools/verify_fish_bridge.py — 一键复现「大肥鱼 × jeyi」的对接验证
 
 它做的事：
   1. 找到（或接收）一个已安装/已下载的 dsh-identity 包；
@@ -126,11 +126,11 @@ def main():
     port = free_port()
     env = dict(os.environ)
     env["DSH_HOME"] = os.path.join(work, "dshhome")
-    env["MEMORY_BRAIN_URL"] = f"http://127.0.0.1:{port}"
+    env["JEYI_URL"] = f"http://127.0.0.1:{port}"
     os.makedirs(env["DSH_HOME"], exist_ok=True)
 
     py = sys.executable
-    cmd = [py, "-m", "brain.serve", "--port", str(port),
+    cmd = [py, "-m", "jeyi.serve", "--port", str(port),
            "--store", os.path.join(work, "peers")]
     if a.dense:
         cmd.append("--dense")

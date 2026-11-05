@@ -15,7 +15,7 @@ try:
 except (AttributeError, OSError):
     pass
 
-from brain import MemoryHooks
+from jeyi import MemoryHooks
 
 
 def show(t):

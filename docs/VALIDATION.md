@@ -1,9 +1,9 @@
-# 验证报告 · memory-brain-agent v4.6
+# 验证报告 · jeyi v5.0
 
 验证时间：2026-11-05
 验证方式：自动化测试（37 项）+ 检索基准（主集 53 问 / 留出集 27 问）+ 一年虚拟时间模拟
 + 多轮回放 + 端到端演示 + 脑图导出截图
-对应规范：memory-architecture v3.1.1 + v4.0 重构 + v4.1 长时程 + v4.6 稠密混合（见 `docs/FIXES.md`）
+对应规范：memory-architecture v3.1.1 + v4.0 重构 + v4.1 长时程 + v5.0 稠密混合（见 `docs/FIXES.md`）
 
 ---
 
@@ -20,7 +20,7 @@
 核心记忆 3/3 仍在，小事 17/18 归档，归档后常规检索取不到但显式回忆 18/18 可取回，
 两条承诺分别在到期前一天被主动提起。
 
-**v4.6 把留出集从 77.8% 提到 85.2%，且没有牺牲任何东西**：接入 24MB 的本地 bge-small-zh
+**v5.0 把留出集从 77.8% 提到 85.2%，且没有牺牲任何东西**：接入 24MB 的本地 bge-small-zh
 （int8 ONNX，CPU 2.8ms/句），用 RRF 与词法做名次融合。主集同时从 96.2% 升到 98.1%，
 弃答仍是 100%，不联网、不要 GPU、不要 API key。
 
@@ -54,7 +54,7 @@
 | SQLite 事件表往返 | `test_sqlite_roundtrip` | ✅ 通过 |
 | 改口唯一匹配 / traits 证据制 / 归档隔离 / 哈希向量 / embedding | 沿用 v3 契约测试 | ✅ 通过 |
 
-合计 **32/32**，`python tests/test_brain.py` 在 Windows（GBK 控制台）与 Linux 均返回 0。
+合计 **32/32**，`python tests/test_jeyi.py` 在 Windows（GBK 控制台）与 Linux 均返回 0。
 
 ## 三、检索基准（`python tools/bench.py`）
 
@@ -119,7 +119,7 @@ v3 的线性扫描为 44 ms/轮，v4 索引路径在同一数据量级下 <1 ms�
 留出集还抓到一个**真 bug**：频率副词"一般/平时/经常/通常"没进停用表，
 导致「我一般几点下班」被「我周末一般会去跑步」抢走。修掉后留出集 +3.7 分，主集不受影响。
 
-## 三之四、稠密混合（v4.6，`--dense`）
+## 三之四、稠密混合（v5.0，`--dense`）
 
 选型与成本见 README 的对照表。结论：**bge-small-zh-v1.5 int8（24MB）+ 词法 RRF**。
 
@@ -187,7 +187,7 @@ v3 的线性扫描为 44 ms/轮，v4 索引路径在同一数据量级下 <1 ms�
 LongMemEval 的记忆是自包含的陈述（"我毕业拿了什么学位"），向量能抓住语义；
 LoCoMo 的记忆是一句离不开上下文的对话，向量抓不住指代。
 我们的产品把记忆写成 gist（自包含的轮廓），所以属于前者——
-这也是为什么 v4.6 在中文留出集上那 +7.4 是真的。
+这也是为什么 v5.0 在中文留出集上那 +7.4 是真的。
 
 **票权怎么选**：0.5 是"任何基准都不掉分"的保守值（LoCoMo 50.9 > 词法 48.6；
 LongMemEval 96.0 > 92.0）。如果你的记忆都是自包含陈述，
@@ -200,7 +200,7 @@ LongMemEval 96.0 > 92.0）。如果你的记忆都是自包含陈述，
 ## 三之三、长时程（`python tools/simulate.py`）
 
 v4.0 之前引擎直接调 `time.time()`，衰减/归档/到期提醒这些长时程行为从未被验证。
-v4.6 用可注入时钟把一年逐日跑完（3 秒），断言 5 条不变量：
+v5.0 用可注入时钟把一年逐日跑完（3 秒），断言 5 条不变量：
 
 | 不变量 | 结果 |
 |--------|------|
@@ -222,7 +222,7 @@ v4.6 用可注入时钟把一年逐日跑完（3 秒），断言 5 条不变量�
 3. **没有多日真实对话数据**。衰减/归档/回响的长期行为在虚拟时钟上验证过，
    但"虚拟时钟跑出来对"不等于"真人用起来对"。
 4. **没有人工盲评**。"被遗忘投诉率""主动提起命中率"仍无真人数据。
-5. **词法检索的天花板已知**：同义改写 0%。别名表（`brain/lang.ALIASES`）只是
+5. **词法检索的天花板已知**：同义改写 0%。别名表（`jeyi/lang.ALIASES`）只是
    "同一属性的不同说法"（年纪=岁、老婆=妻子），不处理上位词（饮料≠茶）。
 6. **参数未在真实数据上重校准**：`REL_FLOOR=0.08`、`GRAPH_ADMIT=0.22`、`INJECT_CHARS=300`
    都是在上述合成语料上选的；换语料应重跑 bench。
@@ -234,14 +234,14 @@ v4.6 用可注入时钟把一年逐日跑完（3 秒），断言 5 条不变量�
 - Python 3.10+，**零第三方依赖**（纯标准库；embedding/LLM 走 `urllib`）。
 - 复现：
   ```bash
-  python tests/test_brain.py              # 37/37
+  python tests/test_jeyi.py              # 37/37
   python tools/bench.py                   # 主集
   python tools/bench.py --holdout         # 留出集
   python tools/simulate.py                # 一年时间线（5 条不变量）
   python tools/replay.py                  # 多轮回放
   python demo.py                          # 端到端
-  python tools/export_map.py              # ui/brain_map_live.html
+  python tools/export_map.py              # ui/map_live.html
   ```
 - CI 矩阵：Ubuntu + Windows × Python 3.10/3.12，跑测试、demo、回放、导出、一年模拟，
   以及**主集与留出集两道质量门禁**（`tools/ci_gate.py`）。
-- 脑图截图：`docs/brain_map.png`（由 headless Edge 渲染导出页得到）。
+- 脑图截图：`docs/map.png`（由 headless Edge 渲染导出页得到）。

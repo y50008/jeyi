@@ -16,7 +16,7 @@ try:
 except (AttributeError, OSError):
     pass
 
-from brain import MemoryHooks, SqliteStorage, HashingEmbedding      # noqa: E402
+from jeyi import MemoryHooks, SqliteStorage, HashingEmbedding      # noqa: E402
 
 # 一段真实感的连续对话（本项目自身的历史 + 几条个人事实）
 TURNS = [
