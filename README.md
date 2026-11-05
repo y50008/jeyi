@@ -1,5 +1,10 @@
 jeyi · v5.0 记忆脑图引擎
 ========================================
+
+[![ci](https://github.com/y50008/jeyi/actions/workflows/ci.yml/badge.svg)](https://github.com/y50008/jeyi/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/y50008/jeyi?label=release)](https://github.com/y50008/jeyi/releases)
+[![license](https://img.shields.io/github/license/y50008/jeyi)](LICENSE)
+
 哲学：发现现成的，超越现成的——**超越必须接受检验**。
 
 30 秒上手
