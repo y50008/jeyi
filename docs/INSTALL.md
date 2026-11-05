@@ -47,7 +47,7 @@ python tools\setup_dense.py          # 下 24MB 模型 + 自检，约 40 秒
 **中文语料用中文模型，英文语料用英文模型**：
 
 ```powershell
-python -c "from brain import dense; dense.download(kind='en')"
+python -c "from jeyi import dense; dense.download(kind='en')"
 ```
 
 ## 二、跑起来看看
@@ -232,7 +232,7 @@ curl -X POST http://127.0.0.1:8765/v1/card   -d '{"peer":"u1","query":"今天聊
 | 面板打不开 | `install_autostart.py --status` | 没起来就看 `~/.jeyi/logs/sidecar.log` |
 | 大肥鱼没变化 | 环境变量 `JEYI_URL` 指对了？ | 先 `curl /v1/health`，再跑 `verify_fish_bridge.py` |
 | 桥接后记忆变少 | 是不是引擎弃答了 | `POST /v1/recall` 带上 `"dense_floor":0.5` 试试 |
-| 稠密没生效 | `python -c "from brain import dense;print(dense.available(),dense.model_present())"` | 缺依赖或模型，重跑 `setup_dense.py` |
+| 稠密没生效 | `python -c "from jeyi import dense;print(dense.available(),dense.model_present())"` | 缺依赖或模型，重跑 `setup_dense.py` |
 | 端口被占 | 会打印"已在服务" | 换 `--port`，或先停掉旧进程 |
 | 中文乱码（Windows） | 控制台是 GBK | `chcp 65001`，或设 `PYTHONIOENCODING=utf-8` |
 

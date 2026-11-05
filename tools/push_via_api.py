@@ -99,6 +99,8 @@ def main():
     a = ap.parse_args()
     owner, name = a.repo.split("/", 1)
 
+    if a.since:
+        a.since = sh("git", "rev-parse", "--verify", a.since).strip()
     commits = sh("git", "rev-list", "--reverse", "HEAD").split()
     if a.since:
         full = sh("git", "rev-list", "HEAD").split()
