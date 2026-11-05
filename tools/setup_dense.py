@@ -15,6 +15,10 @@ import os
 import sys
 import time
 
+from jeyi.console import ensure_utf8
+
+ensure_utf8()
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")

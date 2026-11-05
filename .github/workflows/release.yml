@@ -1,0 +1,37 @@
+name: release
+
+# 打一个 v* 标签 → 自动构建 zip 并发布 Release（发行版）
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: build zip
+        run: python tools/package_release.py
+      - name: show artifact
+        run: ls -lh dist/
+      - name: publish
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then TAG="v$(python -c 'from jeyi import __version__; print(__version__)')"; fi
+          gh release create "$TAG" dist/*.zip \
+            --title "jeyi $TAG" \
+            --generate-notes \
+            --notes "每轮只注入 300 字的长期记忆引擎。零依赖 Python，可选 24MB 本地稠密模型。" \
+            || gh release upload "$TAG" dist/*.zip --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

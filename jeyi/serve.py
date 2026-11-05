@@ -34,6 +34,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from jeyi import MemoryHooks, JsonlStorage          # noqa: E402
 from jeyi import viz                                 # noqa: E402
 
+from jeyi.console import ensure_utf8
+
+ensure_utf8()
+
 DEFAULT_STORE = os.path.join(os.getcwd(), "data", "peers")
 
 

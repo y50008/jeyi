@@ -18,6 +18,10 @@ except (AttributeError, OSError):
 
 from jeyi import MemoryHooks, SqliteStorage, HashingEmbedding      # noqa: E402
 
+from jeyi.console import ensure_utf8
+
+ensure_utf8()
+
 # 一段真实感的连续对话（本项目自身的历史 + 几条个人事实）
 TURNS = [
     ("细节在末梢，向上一次轮廓，再向上是事件。没有真正的遗忘，也没有不遗忘。", "encode"),

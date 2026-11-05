@@ -34,6 +34,10 @@ except (AttributeError, OSError):
 from jeyi import MemoryHooks                      # noqa: E402
 from jeyi import dense as dense_mod        # noqa: E402
 
+from jeyi.console import ensure_utf8
+
+ensure_utf8()
+
 CACHE = os.path.join(os.path.expanduser("~"), ".cache", "jeyi", "bench")
 
 _MONTHS = {m: i + 1 for i, m in enumerate(

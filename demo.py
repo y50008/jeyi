@@ -71,6 +71,10 @@ print("  → 召回的 id 确实出现在注入包里：", bool(set(ids) & set(r
 
 show("⑤ 改口：唯一匹配 + 事件溯源（重启不复活）")
 import tempfile
+
+from jeyi.console import ensure_utf8
+
+ensure_utf8()
 d = tempfile.mkdtemp()                      # 用临时目录，保证 demo 可重复运行
 ag2 = MemoryHooks(store_dir=d)
 n_old = ag2.brain.add_node(label="用户对花生不过敏", gist="用户对花生不过敏",

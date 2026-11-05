@@ -8,12 +8,17 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         python: ["3.10", "3.12"]
     runs-on: ${{ matrix.os }}
+    # Windows 的默认代码页不是 UTF-8：不设这两个变量，
+    # 任何一句中文 print 都会 UnicodeEncodeError（工具内部也加了 ensure_utf8 兜底）
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: tests (36)
+      - name: tests (40)
         run: python tests/test_jeyi.py
       - name: demo
         run: python demo.py

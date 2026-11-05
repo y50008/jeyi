@@ -25,6 +25,10 @@ except (AttributeError, OSError):
 
 from jeyi import MemoryHooks, clock     # noqa: E402
 
+from jeyi.console import ensure_utf8
+
+ensure_utf8()
+
 # ---- 语料 ---------------------------------------------------------------
 CORE = [                      # 重要 + 会被反复提起
     ("我对花生过敏，吃了会起疹子", "花生", 0.85),

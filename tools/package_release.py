@@ -17,6 +17,10 @@ import sys
 import time
 import zipfile
 
+from jeyi.console import ensure_utf8
+
+ensure_utf8()
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKIP_DIRS = {".git", ".venv", "venv", "data", "dist", "__pycache__", "node_modules",
              ".idea", ".vscode", ".pytest_cache"}

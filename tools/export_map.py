@@ -20,6 +20,10 @@ sys.path.insert(0, ROOT)
 
 from jeyi import MemoryHooks, JsonlStorage, __version__      # noqa: E402
 
+from jeyi.console import ensure_utf8
+
+ensure_utf8()
+
 # 内置语料：本项目自己的历史（与 topic/ 文档一致），用来演示"记忆长什么样"
 DEMO = [
     ("细节在末梢，向上一次轮廓，再向上是事件。没有真正的遗忘，也没有不遗忘。", "lesson", 0.95, "振奋"),

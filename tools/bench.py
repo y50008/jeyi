@@ -21,6 +21,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from jeyi import MemoryHooks, tokenize            # noqa: E402
 from jeyi.core import DAY                        # noqa: E402
 
+from jeyi.console import ensure_utf8
+
+ensure_utf8()
+
 # ------------------------------------------------------------------ 语料
 # (口语原句, 金标标签)。金标标签用于在注入包里认出"这条是不是该命中的记忆"。
 MEMORIES = [

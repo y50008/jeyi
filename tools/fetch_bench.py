@@ -16,6 +16,10 @@ import sys
 import time
 import urllib.request
 
+from jeyi.console import ensure_utf8
+
+ensure_utf8()
+
 CACHE = os.path.join(os.path.expanduser("~"), ".cache", "jeyi", "bench")
 UA = {"User-Agent": "Mozilla/5.0 jeyi/bench"}
 

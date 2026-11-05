@@ -28,6 +28,10 @@ import tempfile
 import time
 import urllib.request
 
+from jeyi.console import ensure_utf8
+
+ensure_utf8()
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INTEG = os.path.join(ROOT, "integration", "dsh-identity")
 
