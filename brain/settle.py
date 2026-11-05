@@ -9,6 +9,8 @@ v3 的两个致命实现 bug：
 """
 from __future__ import annotations
 import time
+from . import clock
+from .core import WORKING_CAP
 
 from .lang import tokenize, jaccard
 
@@ -16,6 +18,29 @@ SETTLE_BUDGET = {"nodes": 5, "edges": 6}
 CONFLICT_SIM = 0.45         # 词面重合到此程度才进入冲突复核
 ENTAIL_SIM = 0.18           # 达到此相似度可挂到道理节点
 JUDGE_MIN_SIM = 0.30        # 达到此相似度才值得花一次 LLM 调用
+
+
+def _weighted_sim(a: str, b: str, idf=None) -> float:
+    """idf 加权的余弦重合度。
+
+    为什么不用 Jaccard：模板句会骗人。「我上周去试了火锅，感觉一般」和
+    「我上周去试了爬山，感觉一般」词面 Jaccard 高达 0.85，但它们是两件不相干的事；
+    用 idf 加权后，模板词（df 高、权重低）几乎不贡献相似度，真正的主题词才算数。
+    没有索引时退化为普通 Jaccard（测试里的小图也够用）。
+    """
+    sa, sb = set(tokenize(a)), set(tokenize(b))
+    if not sa or not sb:
+        return 0.0
+    if idf is None:
+        return jaccard(sa, sb)
+    wa = {t: idf(t) ** 2 for t in sa}
+    wb = {t: idf(t) ** 2 for t in sb}
+    na = sum(wa.values()) ** 0.5
+    nb = sum(wb.values()) ** 0.5
+    if na <= 0 or nb <= 0:
+        return 0.0
+    inter = sum(min(wa[t], wb.get(t, 0.0)) for t in sa & sb)
+    return inter / (na * nb)
 
 
 def _conflict_reason(brain, judge, a, b, sim):
@@ -31,7 +56,7 @@ def _conflict_reason(brain, judge, a, b, sim):
 
 
 def settle(brain, new_ids: list, scorer=None, judge=None) -> list:
-    t = time.time()
+    t = clock.now()
     budget = dict(SETTLE_BUDGET)
     log = []
     news = [brain.nodes[i] for i in new_ids if i in brain.nodes]
@@ -50,6 +75,7 @@ def settle(brain, new_ids: list, scorer=None, judge=None) -> list:
     log.append(f"① replay 交错：{len(news)} 新节点，{replayed} 个强邻居一并重放")
 
     # ② 预测误差检测：词面相近但值不同 → 冲突候选，不静默、不自动定论
+    idf = (scorer.index.idf if scorer is not None else None)
     cand = 0
     seen_pairs = set()
     for n in news:
@@ -60,7 +86,7 @@ def settle(brain, new_ids: list, scorer=None, judge=None) -> list:
             pair = tuple(sorted((n.id, m.id)))
             if pair in seen_pairs:
                 continue
-            sim = jaccard(ntok, tokenize(m.gist + " " + m.label))
+            sim = _weighted_sim(n.gist + " " + n.label, m.gist + " " + m.label, idf)
             if sim < CONFLICT_SIM:
                 continue
             if n.gist.strip() == m.gist.strip():
@@ -112,6 +138,8 @@ def settle(brain, new_ids: list, scorer=None, judge=None) -> list:
 
     moved = brain.archive_pass(t)
     log.append(f"⑥ 归档扫描：{moved} 条转入 archive（full 卡仍在）")
+    work = brain.slice_pass(t)
+    log.append(f"⑦ 工作记忆切片：{work} 条变更（容量 {WORKING_CAP}）")
 
     if scorer:
         scorer._rebuild()
@@ -123,7 +151,7 @@ PRIORITY = {"到期承诺": 0, "Zeigarnik 未竟": 1, "日期回响": 2, "情感
 
 def resonate(brain, t: float = None, cap: int = 2) -> list:
     """回响：返回 [(触发类型, node_id)]，按优先级取前 cap 条（规范：主动 ≤2 次/对话）。"""
-    t = t or time.time()
+    t = t or clock.now()
     out = []
     today = time.localtime(t)
     for n in brain.nodes.values():

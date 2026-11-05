@@ -13,6 +13,7 @@ v3 的 _inject 有四个问题，这里全部重做：
 """
 from __future__ import annotations
 import time as _time
+from . import clock
 
 from .lang import tokenize, jaccard
 
@@ -28,10 +29,14 @@ ORIGIN_MARK = {"user": "·", "system": "§", "agent": "~", "web": "?"}
 
 
 def _line(brain, n, now, qtoks) -> str:
-    """单条记忆的紧凑编码。字符就是 token，能省一个是一个。"""
+    """单条记忆的紧凑编码。字符就是 token，能省一个是一个。
+
+    归档记忆用 ↩ 前缀标记——它是"很久没提起但确实记得"的东西，
+    让模型可以用过去时/保留语气提起，而不是当成刚发生的事。
+    """
     mark = ORIGIN_MARK.get(n.origin, "~")
     body = n.gist or n.label
-    line = f"{mark}{body}"
+    line = (f"↩{mark}" if n.slice == "archive" else mark) + body
     # 通道2：原话锚点 —— 只在"查询更贴近原话"或"这是纠错卡"时附带，
     # 平时不带（避免每轮多烧 20-40 字）。这是 v3 里 verbatim 永远到不了模型的修复。
     if n.verbatim:
@@ -55,13 +60,15 @@ def _salience(brain, n, now) -> float:
 
 def build(brain, ranked, qtoks=None, budget: int = INJECT_CHARS,
           session_seen: dict = None, pending: list = None, now: float = None,
-          social: bool = False, rel_map: dict = None) -> dict:
+          social: bool = False, rel_map: dict = None,
+          allow_archive: bool = False) -> dict:
     """返回 {text, used, forced, dropped, chars}。
 
     session_seen: {node_id: 注入时的轮次}，由 hooks 维护，会话结束清空。
     pending: 上一轮 [[recall: 词]] 召回的节点 id，本轮强制注入一次。
+    allow_archive: 显式回忆模式——归档记忆可以入包（带 ↩ 标记）。
     """
-    now = now or _time.time()
+    now = now or clock.now()
     session_seen = session_seen if session_seen is not None else {}
     qtoks = qtoks or []
     rel_map = rel_map or {}
@@ -76,7 +83,9 @@ def build(brain, ranked, qtoks=None, budget: int = INJECT_CHARS,
         if nid in used:
             return True
         n = brain.nodes.get(nid)
-        if n is None or n.status != "live" or n.slice == "archive":
+        if n is None or n.status != "live":
+            return False
+        if n.slice == "archive" and not allow_archive:
             return False
         line = _line(brain, n, now, qtoks)
         if len(line) < MIN_LINE:

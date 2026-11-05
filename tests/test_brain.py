@@ -367,6 +367,82 @@ def test_B16_v3_data_migration():
     print("ok  B16 v3 数据自动迁移")
 
 
+# ---------------------------------------------------------------- v4.1 长时程能力
+def test_virtual_clock_drives_decay():
+    """v4.0 直接调 time.time()，半年后的行为根本没法测。v4.1 引入可注入时钟。"""
+    from brain import clock as ck
+    vc = ck.VirtualClock("2026-01-01")
+    with vc:
+        b = Brain()
+        n = b.add_node(label="很久以前的一件事", origin="user", importance=0.35)
+        n.mentions = [vc.now()]
+        f0 = b.freshness(n)
+        vc.advance(days=30)
+        f30 = b.freshness(n)
+        vc.advance(days=470)                       # 累计 500 天
+        f500 = b.freshness(n)
+        assert f0 > f30 > f500, "鲜活度必须随时钟单调下降"
+        assert f500 < 0.02, f"500 天后应几乎不可及，实际 {f500:.4f}"
+        b.archive_pass()
+        assert n.slice == "archive", "500 天没提起过的记忆应归档"
+    # 退出 with 后时钟必须恢复真实时间
+    assert abs(ck.now() - time.time()) < 5, "虚拟时钟泄漏到外层"
+    print("ok  可注入时钟驱动衰减与归档（180→500 天）")
+
+
+def test_due_commitment_fires_on_due_date():
+    """前瞻记忆：承诺必须在自己那一天浮出来，不能早也不能晚。"""
+    from brain import clock as ck
+    vc = ck.VirtualClock("2026-01-01")
+    with vc:
+        ag = MemoryHooks()
+        ids = ag.on_message("我1月10号要去医院体检")
+        assert ids, "承诺应入卡"
+        n = ag.brain.nodes[ids[0]]
+        assert n.due_at > 0, "应解析出到期时间"
+        assert not ag.on_proactive(), "还没到日子不该提醒"
+        vc.advance(days=8)                       # 2026-01-09，提前一天
+        trig = ag.on_proactive()
+        assert any(t == "到期承诺" for t, _ in trig), f"到期前一天应提醒，实际 {trig}"
+        vc.advance(days=3)                       # 逾期
+        trig2 = ag.on_proactive()
+        assert any(t == "到期承诺" for t, _ in trig2), "逾期也应提醒"
+    print("ok  到期承诺在正确的那天浮出（前瞻记忆）")
+
+
+def test_working_slice_is_populated():
+    """三切片里 working 一直为 0 是 v4.0 的遗留缺陷。"""
+    from brain.core import WORKING_CAP
+    ag = MemoryHooks()
+    topics = ["火锅", "爬山", "铁观音", "游泳", "摄影", "围棋", "爵士乐", "咖啡",
+              "露营", "书法"]
+    for t in topics:
+        ag.on_message(f"我最近在研究{t}，周末常去")
+    ag.on_session_end()
+    working = [n for n in ag.brain.nodes.values() if n.slice == "working"]
+    assert len(working) == WORKING_CAP, f"工作记忆应满容量，实际 {len(working)}"
+    assert ag.stats()["slices"]["working"] == WORKING_CAP
+    print(f"ok  工作记忆切片真的被填满（{WORKING_CAP} 条）")
+
+
+def test_archive_still_recallable_on_explicit_request():
+    """设计说"遗忘=可及性下降，不是可用性消失"；v4.0 却把归档硬排除，等于真遗忘。"""
+    ag = MemoryHooks()
+    n = ag.brain.add_node(label="我们第一次见面是在茶水间", gist="我们第一次见面是在茶水间",
+                          origin="user", about_person=True, importance=0.6)
+    n.mentions = [time.time() - 500 * DAY]
+    ag.brain.archive_pass()
+    assert n.slice == "archive"
+    # 常规检索不翻归档（避免陈年记忆淹没当前话题）
+    assert all(x["id"] != n.id for x in ag.scorer.rank("茶水间")), "常规检索不该翻归档"
+    # 显式回忆必须能翻出来
+    ranked = ag.scorer.rank("茶水间 第一次见面", include_archive=True)
+    assert any(x["id"] == n.id for x in ranked), "显式回忆应能取回归档记忆"
+    r = ag.before_reply("你还记得我们第一次见面吗")
+    assert n.id in r["cites"], f"「还记得」应触发归档召回，实际注入 {r['cites']}"
+    print("ok  归档记忆可被显式回忆取回（可及性下降 ≠ 可用性消失）")
+
+
 # ---------------------------------------------------------------- 新能力
 def test_recall_protocol_closes_loop():
     """v3 的 [[recall: 词]] 只返回 id，没有人使用；v4 下一轮强制注入。"""

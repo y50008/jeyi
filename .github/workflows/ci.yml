@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: tests (32)
+      - name: tests (36)
         run: python tests/test_brain.py
       - name: demo
         run: python demo.py
@@ -21,7 +21,13 @@ jobs:
         run: python tools/replay.py --sqlite
       - name: export brain map
         run: python tools/export_map.py
-      - name: bench
+      - name: one-year simulation (long-horizon invariants)
+        run: python tools/simulate.py
+      - name: bench (main)
         run: python tools/bench.py --json > bench.json
-      - name: quality gate
+      - name: quality gate (main)
         run: python tools/ci_gate.py bench.json
+      - name: bench (holdout)
+        run: python tools/bench.py --holdout --json > holdout.json
+      - name: quality gate (holdout, anti-overfit)
+        run: python tools/ci_gate.py holdout.json --holdout

@@ -12,9 +12,9 @@ v3 的三处结构性错误，这里逐个修：
 """
 from __future__ import annotations
 import math
-import time as _time
+from . import clock
 from .adapters import cosine
-from .lang import tokenize, expand
+from .lang import tokenize, expand, ALIASES
 
 # ---- 标定常数（全部可通过 bench.py 重新校准）----
 DENSE_W = 0.35          # 有 embedding 时语义分权重
@@ -23,6 +23,8 @@ REL_FLOOR = 0.08        # 词面相关度硬门控（余弦）：低于此值且
 GRAPH_ADMIT = 0.22      # 只有强连接（同句共现/同一稀有实体）才能"凭图入候选"
 GRAPH_BONUS = 0.35      # 图的排序加成
 SEED_K = 5              # 扩散种子数
+ARCHIVE_PENALTY = 0.55  # 显式回忆时归档节点的排序惩罚（能翻出来，但排在活跃记忆之后）
+EXPAND_W = 1.0          # 别名扩展词权重。实测降到 0.5 反而掉主集分（"年纪→岁"需要等权），保持等权
 SPREAD_DECAY = 0.6      # 逐跳衰减
 SPREAD_TOPK = 3         # 每跳只有 top-3 获得传播资格（侧抑制）
 # 只有「语义边」参与扩散：会话时序边会把整条会话串成链，
@@ -142,14 +144,33 @@ class Scorer:
             counts[t] = counts.get(t, 0) + 1
         return {t: (1.0 + math.log(c)) * self.index.idf(t) for t, c in counts.items()}
 
-    def rel(self, qtoks: list, n) -> float:
-        """tf-idf 余弦 ∈ [0,1]。与查询长度无关，可跨语料规模标定。"""
-        if not qtoks:
+    def query_weights(self, tokens: list) -> dict:
+        """查询的 tf-idf 权重；别名扩展词降权（EXPAND_W）。
+
+        为什么降权：扩展是在猜。给猜出来的同义词和原词一样的权重，
+        会把查询向量拉偏——「我最烦工作里的什么」扩出 上班/公司/讨厌/不喜欢 后，
+        真正命中的"讨厌"反而被稀释到门控线下（留出集实测 gold rel 只有 0.039）。
+        """
+        counts: dict[str, int] = {}
+        for t in tokens:
+            counts[t] = counts.get(t, 0) + 1
+        qw = {t: (1.0 + math.log(c)) * self.index.idf(t) for t, c in counts.items()}
+        for t in counts:
+            for a in ALIASES.get(t, ()):
+                if a not in qw:
+                    qw[a] = EXPAND_W * self.index.idf(a)
+        return qw
+
+    def rel(self, qw: dict, n) -> float:
+        """tf-idf 余弦 ∈ [0,1]。与查询长度无关，可跨语料规模标定。
+
+        qw 是 query_weights() 的输出（原始词 + 降权的扩展词）。
+        为兼容旧调用，传入 token 列表时会自动折算。
+        """
+        if not qw:
             return 0.0
-        qc: dict[str, int] = {}
-        for t in qtoks:
-            qc[t] = qc.get(t, 0) + 1
-        qw = {t: (1.0 + math.log(c)) * self.index.idf(t) for t, c in qc.items()}
+        if not isinstance(qw, dict):
+            qw = self.query_weights(list(qw))
         qnorm = math.sqrt(sum(v * v for v in qw.values())) or 1.0
         dw = self._weights(n)
         if not dw:
@@ -179,7 +200,9 @@ class Scorer:
                 for nb, et, w in self.brain.adj.get(nid, []):
                     if nb in seen or et not in SPREAD_EDGE_TYPES:
                         continue
-                    gain[nb] = gain.get(nb, 0.0) + v * w
+                    # 取 max 而不是 +=：一个节点同时连到 5 个种子时，
+                    # 累加会让"枢纽节点"拿到 5 倍质量、盖过真正的词面命中。
+                    gain[nb] = max(gain.get(nb, 0.0), v * w)
             frontier = [(nid, g * SPREAD_DECAY)
                         for nid, g in sorted(gain.items(), key=lambda x: -x[1])[:SPREAD_TOPK]]
             for nid, v in frontier:
@@ -189,18 +212,27 @@ class Scorer:
         return out
 
     # ---- 主入口 ----
-    def rank(self, query: str, k: int = 8, mood: float = 0.0) -> list:
+    def rank(self, query: str, k: int = 8, mood: float = 0.0,
+             include_archive: bool = False) -> list:
+        """include_archive=True 时把归档节点也纳入（带惩罚），用于"你还记得…吗"这类显式回忆。
+
+        设计原则是"遗忘=可及性下降，不是可用性消失"：常规检索不翻归档，
+        但用户点名回忆时必须能翻出来——否则就是真正的遗忘。
+        """
         self._sync()
-        qtoks = expand(tokenize(query))
+        qtoks = tokenize(query)
+        qw = self.query_weights(qtoks)
         qvec = self.embedding.embed(query) if self.embedding else None
-        cand = self.index.candidates(qtoks)
+        cand = self.index.candidates(list(qw))
         # 候选：命中索引的 + 有 feeling 文本命中的（情感押韵通道）
         scored: dict[str, dict] = {}
         for nid in cand:
             n = self.brain.nodes.get(nid)
-            if n is None or n.status != "live" or n.slice == "archive":
+            if n is None or n.status != "live":
                 continue
-            base = self.rel(qtoks, n)
+            if n.slice == "archive" and not include_archive:
+                continue
+            base = self.rel(qw, n)
             dense = 0.0
             if self.embedding and qvec is not None:
                 nv = self._nodevec(n)
@@ -216,13 +248,15 @@ class Scorer:
         mass = self.spread(seeds)
         for nid, g in mass.items():
             n = self.brain.nodes.get(nid)
-            if n is None or n.status != "live" or n.slice == "archive":
+            if n is None or n.status != "live":
+                continue
+            if n.slice == "archive" and not include_archive:
                 continue
             cur = scored.setdefault(nid, {"rel": 0.0, "sparse": 0.0, "dense": 0.0})
             cur["graph"] = g
 
         out = []
-        now = _time.time()
+        now = clock.now()
         for nid, v in scored.items():
             n = self.brain.nodes[nid]
             rel = v["rel"]
@@ -237,13 +271,19 @@ class Scorer:
             align = 1.0
             if n.feeling:
                 align = 1 + 0.12 * float(n.feeling.get("valence", 0)) * mood
-            score = (0.65 * rel + 0.25 * prior + GRAPH_BONUS * g) * align
+            penalty = ARCHIVE_PENALTY if n.slice == "archive" else 1.0
+            score = (0.65 * rel + 0.25 * prior + GRAPH_BONUS * g) * align * penalty
             out.append({"id": nid, "label": n.label, "score": round(score, 4),
+                        "_graph_only": rel < REL_FLOOR,
                         "decomp": {"rel": round(rel, 3), "sparse": round(v["sparse"], 3),
                                    "dense": round(v["dense"], 3), "graph": round(g, 3),
                                    "I": round(I, 3), "A": round(A, 3), "E": round(E, 3),
                                    "align": round(align, 3)}})
-        out.sort(key=lambda x: -x["score"])
+        # 词面命中永远排在"纯靠扩散进来"的候选之前：扩散是补召回，不是抢排名。
+        # 否则连了很多种子的枢纽节点会以 rel=0 压过真正的命中（留出集实测）。
+        out.sort(key=lambda x: (x["_graph_only"], -x["score"]))
+        for x in out:
+            x.pop("_graph_only", None)
         return out[:k]
 
     def _nodevec(self, n):

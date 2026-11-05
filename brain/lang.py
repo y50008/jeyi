@@ -37,6 +37,8 @@ CJK_STOP_BIGRAMS = {
     "可以", "是否", "已经", "还是", "就是", "然后", "因为", "所以", "但是", "不过",
     "一下", "一些", "自己", "现在", "时候", "觉得", "知道", "一个", "没有", "不是",
     "名字", "叫什", "么名", "叫做", "想问", "告诉",
+    # 频率副词是典型的"假朋友"：「我一般几点下班」会被「我周末一般会去…」抢走
+    "一般", "平时", "经常", "通常", "常常", "老是", "总是",
 }
 
 # 疑问/假设/玩笑：这类句子不入卡（v3 的 _ME 把"？"排除在抽取范围外，导致问句漏进记忆）
@@ -179,6 +181,13 @@ def has_correction_cue(text: str) -> bool:
     return any(w in text for w in CORRECTION_CUES)
 
 
+# 显式回忆线索：出现这些说法时，检索要允许翻归档（"遗忘=可及性下降，不是可用性消失"）
+RECALL_CUES = ("还记得", "记得吗", "你记得", "以前", "曾经", "那次", "上次", "当初",
+               "最早", "刚开始", "说起过", "回忆", "老早", "第一次")
+def has_recall_cue(text: str) -> bool:
+    return any(w in (text or "") for w in RECALL_CUES)
+
+
 def split_clauses(text: str) -> list:
     """按句读切分，保留分隔符（问句判定需要它）。返回 [(片段, 分隔符)]。"""
     out, buf = [], ""
@@ -211,7 +220,8 @@ def next_weekday(now: float, wd: int, next_week: bool = True) -> float:
 
 def find_date(text: str, now: float = None) -> tuple:
     """从文本中解析一个到期时间戳。返回 (ts|None, 原始词)。只取第一个命中。"""
-    now = now or time.time()
+    from . import clock
+    now = now or clock.now()
     m = _TIME_RE.search(text or "")
     if not m:
         return None, None

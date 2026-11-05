@@ -13,6 +13,7 @@ v3 的实现缺口（本次全部修复）：
 from __future__ import annotations
 import re
 import time
+from . import clock
 
 from .core import Brain
 from .adapters import HeuristicJudge
@@ -23,7 +24,7 @@ from . import settle as st
 from .lang import (tokenize, expand, jaccard, split_clauses, is_question, is_hypothetical,
                    is_hearsay, has_commitment, has_correction_cue, sentiment,
                    extract_entities, extract_names, find_date, strip_filler, strip_tail,
-                   is_planned)
+                   is_planned, has_recall_cue)
 
 INJECT_CHARS = packer.INJECT_CHARS
 MAX_PER_MSG = 3
@@ -202,15 +203,18 @@ class MemoryHooks:
     def before_reply(self, context: str, k: int = 8) -> dict:
         self.brain.turn += 1
         qtoks = expand(tokenize(context))
-        ranked = self.scorer.rank(context, k=k, mood=self.persona.mood.value())
+        # 显式回忆（「你还记得…吗」）允许翻归档；常规对话不翻，避免被陈年记忆淹没
+        recall_mode = has_recall_cue(context)
+        ranked = self.scorer.rank(context, k=k, mood=self.persona.mood.value(),
+                                  include_archive=recall_mode)
         rel_map = {r["id"]: r["decomp"]["rel"] for r in ranked}
         social = any(w in context for w in _SOCIAL) or len(qtoks) == 0
         p = packer.build(self.brain, ranked, qtoks=qtoks, budget=self.budget,
                          session_seen=self.session_seen, pending=self.pending,
-                         social=social, rel_map=rel_map)
+                         social=social, rel_map=rel_map, allow_archive=recall_mode)
         self.pending = []
         # 只对真正进入注入包的节点计复述（v3 把没注入的也算，污染 ACT-R）
-        now = time.time()
+        now = clock.now()
         for nid in p["used"]:
             self.brain.mention(nid, now)
             self.brain.nodes[nid].last_injected = now
@@ -244,7 +248,7 @@ class MemoryHooks:
         terms = _RECALL.findall(agent_text or "")
         hits: list[str] = []
         for term in terms:
-            for r in self.scorer.rank(term, k=3):
+            for r in self.scorer.rank(term, k=3, include_archive=True):
                 if r["id"] not in hits:
                     hits.append(r["id"])
         self.pending = (self.pending + hits)[:6]

@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass, field, asdict, fields as dc_fields
 from collections import defaultdict
 
+from . import clock
 from .lang import extract_entities, find_date, has_commitment
 
 TYPES = ("event", "fact", "skill", "lesson", "reflection", "rule", "self")
@@ -27,10 +28,12 @@ DAY = 86400.0
 MAX_DEGREE = 8              # 每节点边数上限（防 O(N²) 爆炸）
 ARCHIVE_FRESHNESS = 0.05    # 鲜活度低于此值且无到期承诺 → 归档（约 4.3 个半衰期 ≈ 半年）
 KEEP_TYPES = ("rule", "self")   # 规则与自我认知永不归档
+WORKING_CAP = 5             # 工作记忆切片容量
+WORKING_RECENT_D = 7.0      # 只有最近 7 天被提起过的节点才有资格进工作记忆
 
 
 def now() -> float:
-    return time.time()
+    return clock.now()
 
 
 @dataclass
@@ -316,3 +319,30 @@ class Brain:
                 self.set_slice(n.id, "archive")
                 moved += 1
         return moved
+
+    def slice_pass(self, t: float = None) -> int:
+        """把「最近 7 天被提起过」的最活跃节点放进 working 切片（容量 5）。
+
+        v3/v4.0 里 working 切片永远是 0——三切片名存实亡。工作记忆的语义是
+        "此刻在嘴边的东西"，所以判据是最近性 × 显著性，不是单纯的重要性。
+        """
+        t = t or now()
+        cands = []
+        for n in self.nodes.values():
+            if n.status != "live" or n.slice == "archive":
+                continue
+            last = max(n.mentions) if n.mentions else n.created
+            recent = (t - last) <= WORKING_RECENT_D * DAY
+            if not recent:
+                if n.slice == "working":
+                    self.set_slice(n.id, "active")
+                continue
+            cands.append((self.freshness(n, t) * (0.5 + n.importance), n))
+        cands.sort(key=lambda x: -x[0])
+        changed = 0
+        for i, (_s, n) in enumerate(cands):
+            want = "working" if i < WORKING_CAP else "active"
+            if n.slice != want:
+                self.set_slice(n.id, want)
+                changed += 1
+        return changed

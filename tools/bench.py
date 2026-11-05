@@ -1,4 +1,4 @@
-"""tools/bench.py — 检索质量基准（v4.0 新增，这是 v3 最缺的那场"检验"）
+﻿"""tools/bench.py — 检索质量基准（v4.0 新增，这是 v3 最缺的那场"检验"）
 
 不测"机制在不在"，测"问对了能不能拿回来、代价多大"。
 
@@ -136,6 +136,67 @@ QUESTIONS = [
     ("我老婆不能接触什么", {"wifeallergy"}, "multihop"),
 ]
 
+# ------------------------------------------------------------------ 留出集
+# 完全不同的人设、领域与问法。**这份语料在参数定稿后才写、只跑一次**：
+# 主集与留出集的差距就是过拟合的度量。任何"照着留出集调参"都让它失去意义。
+HOLDOUT_MEMORIES = [
+    ("我在杭州做建筑设计，主要做住宅", "designer"),
+    ("我妈今年六十八，住在绍兴", "mom"),
+    ("我弟弟在准备考研，压力很大", "brother"),
+    ("我对芒果过敏，嘴会肿", "mango"),
+    ("我每天早上要喝一杯黑咖啡，不加糖", "coffee"),
+    ("我下周五要去甲方那边过方案", "client"),
+    ("我最近在赶一个幼儿园的项目", "project"),
+    ("我加班到十一点是常事", "overtime"),
+    ("我颈椎不好，坐久了会疼", "neck"),
+    ("我养了两盆绿萝，快养死了", "plant"),
+    ("我租的房子在拱墅区，两室一厅", "rent"),
+    ("我周末一般会去运河边跑步", "run"),
+    ("我最喜欢的建筑师是路易斯康", "kahn"),
+    ("我不会游泳，一直想学", "swim"),
+    ("我讨厌改图，尤其是甲方半夜提需求", "revision"),
+    ("我女朋友叫阿禾，是做展览的", "girlfriend"),
+    ("我家猫叫年糕，特别怕生", "cat"),
+    ("我习惯用 SketchUp 建模", "sketchup"),
+    ("我明年想考一级注册建筑师", "exam"),
+    ("我血压有点高，医生让少熬夜", "bp"),
+    ("我下个月要搬家，搬去滨江", "move"),
+    ("我喜欢吃辣，但胃不太好", "spicy"),
+    ("我手机里存了很多工地的照片", "photos"),
+    ("我大学在同济读的", "tongji"),
+    ("年糕对牛奶不耐受", "catmilk"),
+]
+
+HOLDOUT_QUESTIONS = [
+    ("我是做哪一行的", {"designer"}, "direct"),
+    ("我妈现在住哪", {"mom"}, "direct"),
+    ("我弟弟最近在忙什么", {"brother"}, "direct"),
+    ("我吃芒果会怎么样", {"mango"}, "direct"),
+    ("我早上喝什么", {"coffee"}, "direct"),
+    ("我下周五有什么安排", {"client"}, "temporal"),
+    ("我在赶什么项目", {"project"}, "direct"),
+    ("我一般几点下班", {"overtime"}, "infer"),
+    ("我身体有哪些毛病", {"neck", "bp"}, "aggregate"),
+    ("我养了什么植物", {"plant"}, "direct"),
+    ("我住在哪个区", {"rent"}, "direct"),
+    ("我周末做什么运动", {"run"}, "direct"),
+    ("我最喜欢哪个建筑师", {"kahn"}, "direct"),
+    ("我会游泳吗", {"swim"}, "direct"),
+    ("我最烦工作里的什么", {"revision"}, "infer"),
+    ("我女朋友是做什么的", {"girlfriend"}, "direct"),
+    ("我家猫叫什么", {"cat"}, "entity"),
+    ("我用什么软件建模", {"sketchup"}, "direct"),
+    ("我明年有什么打算", {"exam"}, "direct"),
+    ("我下个月要做什么", {"move"}, "temporal"),
+    ("我在哪读的大学", {"tongji"}, "direct"),
+    ("我家猫有什么忌口", {"catmilk"}, "multihop"),
+    ("我平时喝什么饮料", {"coffee"}, "synonym"),
+    ("我养了什么宠物", {"cat"}, "synonym"),
+    ("我车牌号是多少", set(), "abstain"),
+    ("我爷爷叫什么名字", set(), "abstain"),
+    ("我护照什么时候到期", set(), "abstain"),
+]
+
 # v3 的常数（复刻基线用）
 NAIVE_FLOOR, NAIVE_GAP, NAIVE_K = 0.20, 1.35, 8.0
 
@@ -189,11 +250,11 @@ class NaiveV3:
         return [x for x in out if x["score"] >= NAIVE_FLOOR][:k]
 
 
-def _build_engine():
+def _build_engine(memories=None):
     ag = MemoryHooks()
     keys = {}
     ingested = 0
-    for text, key in MEMORIES:
+    for text, key in (memories or MEMORIES):
         ids = ag.on_message(text)
         ingested += len(ids)
         for i in ids:
@@ -204,9 +265,9 @@ def _build_engine():
     return ag, keys, ingested
 
 
-def _evaluate_rank(ag, keys, ranker):
+def _evaluate_rank(ag, keys, ranker, questions=None):
     rows = []
-    for q, gold, cat in QUESTIONS:
+    for q, gold, cat in (questions or QUESTIONS):
         ranked = ranker(q)
         top = [r["id"] for r in ranked[:5]]
         gold_ids = {keys[g] for g in gold if g in keys}
@@ -215,9 +276,9 @@ def _evaluate_rank(ag, keys, ranker):
     return rows
 
 
-def _evaluate_pack(ag, keys, packer_fn, reset=True):
+def _evaluate_pack(ag, keys, packer_fn, reset=True, questions=None):
     rows = []
-    for q, gold, cat in QUESTIONS:
+    for q, gold, cat in (questions or QUESTIONS):
         if reset:
             ag.session_seen.clear()
             ag.brain.turn = 0
@@ -237,17 +298,23 @@ def _evaluate_pack(ag, keys, packer_fn, reset=True):
 
 def main():
     as_json = "--json" in sys.argv
-    ag, keys, ingested = _build_engine()
+    holdout = "--holdout" in sys.argv
+    mem = HOLDOUT_MEMORIES if holdout else MEMORIES
+    qs = HOLDOUT_QUESTIONS if holdout else QUESTIONS
+    if not as_json:
+        print(("【留出集】" if holdout else "【主集】")
+              + " 主集用于调参，留出集只在定稿后跑一次——两者的差距就是过拟合的度量。")
+    ag, keys, ingested = _build_engine(mem)
     n_nodes = len(ag.brain.nodes)
     edges = sum(len(v) for v in ag.brain.adj.values()) // 2
 
     # ---------- v4 ----------
-    v4_rank = _evaluate_rank(ag, keys, lambda q: ag.scorer.rank(q, k=5))
-    v4_pack = _evaluate_pack(ag, keys, lambda q: ag.before_reply(q))
+    v4_rank = _evaluate_rank(ag, keys, lambda q: ag.scorer.rank(q, k=5), qs)
+    v4_pack = _evaluate_pack(ag, keys, lambda q: ag.before_reply(q), questions=qs)
 
     # ---------- naive v3 ----------
     naive = NaiveV3(ag.brain)
-    nv_rank = _evaluate_rank(ag, keys, lambda q: naive.rank(q, k=5))
+    nv_rank = _evaluate_rank(ag, keys, lambda q: naive.rank(q, k=5), qs)
 
     def naive_pack(q):
         ranked = naive.rank(q, k=8)
@@ -269,17 +336,17 @@ def main():
             chars += len(ag.brain.nodes[p].gist)
         return {"used": used, "chars": chars}
 
-    nv_pack = _evaluate_pack(ag, keys, naive_pack)
+    nv_pack = _evaluate_pack(ag, keys, naive_pack, questions=qs)
 
     # ---------- full context ----------
     full_chars = sum(len(n.gist) for n in ag.brain.nodes.values()
                      if n.status == "live" and n.slice != "archive")
-    full_recall = sum(1 for _q, gold, _c in QUESTIONS if gold) / max(
-        1, sum(1 for _q, gold, _c in QUESTIONS if gold))
+    full_recall = sum(1 for _q, gold, _c in qs if gold) / max(
+        1, sum(1 for _q, gold, _c in qs if gold))
 
     # ---------- 延迟 ----------
     lat = []
-    for q, _g, _c in QUESTIONS[:20]:
+    for q, _g, _c in qs[:20]:
         t0 = time.perf_counter()
         ag.scorer.rank(q, k=5)
         lat.append((time.perf_counter() - t0) * 1000)
@@ -287,8 +354,8 @@ def main():
     def pct(rows, pred):
         return round(100.0 * sum(1 for r in rows if pred(r)) / max(1, len(rows)), 1)
 
-    ans = [r for r in QUESTIONS if r[1]]
-    absta = [r for r in QUESTIONS if not r[1]]
+    ans = [r for r in qs if r[1]]
+    absta = [r for r in qs if not r[1]]
 
     def by_cat(rows, cat):
         sub = [r for r in rows if r["cat"] == cat]
@@ -334,10 +401,10 @@ def main():
         return "".join(pad(c, w, right=(i > 0)) for i, (c, w) in enumerate(zip(cells, W)))
 
     print("=" * 74)
-    print(f"语料：{len(MEMORIES)} 条记忆 → 写入 {ingested} 条节点 / {edges} 条边；问题 {len(QUESTIONS)} 个")
+    print(f"语料：{len(mem)} 条记忆 → 写入 {ingested} 条节点 / {edges} 条边；问题 {len(qs)} 个")
     print("注意：合成语料，人工构造，不代表公开基准（见 docs/VALIDATION.md）")
     print("=" * 74)
-    print(row(["指标", "v3.1.1 基线", "v4.0", "整段上下文"]))
+    print(row(["指标", "v3.1.1 基线", "v4.1", "整段上下文"]))
     print("-" * 74)
     print(row(["rank@5 命中率", f"{summary['naive_v3']['rank@5']}", f"{summary['v4']['rank@5']}", "100.0"]))
     print(row(["投递命中（注入对的）", f"{summary['naive_v3']['pack_hit']}",

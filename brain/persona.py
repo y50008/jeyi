@@ -1,4 +1,4 @@
-"""persona.py — 心情系统 + 证据制人格层（§16.4 补丁 P）
+﻿"""persona.py — 心情系统 + 证据制人格层（§16.4 补丁 P）
 
 心情：24h 半衰回落，负面比正面留得久，道歉降火 30%（dsh-identity 实测参数）。
 traits：模型只能提议并附证据；≥3 次独立证据才 durable；纯情绪只能 tentative，
@@ -6,7 +6,7 @@ traits：模型只能提议并附证据；≥3 次独立证据才 durable；纯�
 durable traits 反向调节主动倾向 ±0.12。
 """
 from __future__ import annotations
-import time
+from . import clock
 
 EMOTIONS = {  # (valence, arousal)
     "喜悦": (0.8, 0.7), "信任": (0.6, 0.3), "期待": (0.5, 0.6),
@@ -20,13 +20,13 @@ DURABLE_CAP = 20
 BEHAVIOR_BIAS = 0.12
 
 class Mood:
-    def __init__(self): self.state = None; self.intensity = 0.0; self.at = time.time()
+    def __init__(self): self.state = None; self.intensity = 0.0; self.at = clock.now()
     def set(self, emotion: str, intensity: float = 0.7):
-        assert emotion in EMOTIONS; self.state, self.intensity, self.at = emotion, intensity, time.time()
+        assert emotion in EMOTIONS; self.state, self.intensity, self.at = emotion, intensity, clock.now()
     def value(self, t=None) -> float:
         """当前心情值 ∈ [-1,1]：24h 半衰；负面留得久（半衰 ×1.5）。"""
         if not self.state: return 0.0
-        t = t or time.time()
+        t = t or clock.now()
         v, _ = EMOTIONS[self.state]
         hl = MOOD_HALF_LIFE * (1.5 if v < 0 else 1.0)
         return v * self.intensity * 0.5 ** ((t - self.at) / hl)
@@ -38,7 +38,7 @@ class Trait:
         self.evidence = [ref] if ref else []
         self.emotional_only = bool(emotional)
         self.state = "tentative"      # tentative/durable/vetoed
-        self.proposed_at = time.time()
+        self.proposed_at = clock.now()
     def independent_count(self): return len(set(self.evidence))
 
 class Persona:
@@ -63,7 +63,7 @@ class Persona:
             ds[0].state = "tentative"; ds.pop(0)
     def sweep(self, t=None):
         """tentative 90 天无确认自动退休。"""
-        t = t or time.time()
+        t = t or clock.now()
         for tr in self.traits.values():
             if tr.state == "tentative" and t - tr.proposed_at > TENTATIVE_TTL:
                 tr.state = "retired"
