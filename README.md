@@ -126,6 +126,8 @@ r = ag.before_reply("登录页 花生")
 不用手动标：`我本次…/我本轮…/这段对话…` 这类说法自动落成会话私有。
 隔离对三条检索路径同时生效（词法、稠密、**图扩散**）——漏掉任何一条都等于没隔离。
 
+![实时面板](docs/panel.png)
+
 接入大肥鱼（dsh-identity，v4.6）
 ----------------------------
 [dsh-identity](https://github.com/Anarrogantcat/dsh-identity)（MIT，「大肥鱼 · 身份系统」）
