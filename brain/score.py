@@ -302,16 +302,27 @@ class Scorer:
 
     # ---- 主入口 ----
     def rank(self, query: str, k: int = 8, mood: float = 0.0,
-             include_archive: bool = False) -> list:
+             include_archive: bool = False, scopes=None) -> list:
         """include_archive=True 时把归档节点也纳入（带惩罚），用于"你还记得…吗"这类显式回忆。
 
         设计原则是"遗忘=可及性下降，不是可用性消失"：常规检索不翻归档，
         但用户点名回忆时必须能翻出来——否则就是真正的遗忘。
+
+        scopes: 当前可见的会话集合（如 {"S3"}）。
+          · scope="user"   的记忆任何会话都可见；
+          · scope="session" 的记忆只在它出现过的会话里可见——这是防"会话间干扰"的那道闸。
+          scopes=None 表示不做作用域过滤（评测/调试用）。
         """
         self._sync()
         qtoks = tokenize(query)
         qw = self.query_weights(qtoks)
         qvec = self._embed_query(query) if self.embedding else None
+        scope_set = set(scopes) if scopes is not None else None
+
+        def visible(n) -> bool:
+            if n.scope != "session" or scope_set is None:
+                return True
+            return bool(set(n.sessions) & scope_set) or n.session in scope_set
 
         # ---- 词法一路 ----
         sparse: dict[str, float] = {}
@@ -320,6 +331,8 @@ class Scorer:
             if n is None or n.status != "live":
                 continue
             if n.slice == "archive" and not include_archive:
+                continue
+            if not visible(n):
                 continue
             sparse[nid] = self.rel(qw, n)
 
@@ -331,6 +344,8 @@ class Scorer:
                 if n is None or n.status != "live":
                     continue
                 if n.slice == "archive" and not include_archive:
+                    continue
+                if not visible(n):
                     continue
                 dense_cos[nid] = max(0.0, sim)
 
@@ -362,6 +377,8 @@ class Scorer:
             if n is None or n.status != "live":
                 continue
             if n.slice == "archive" and not include_archive:
+                continue
+            if not visible(n):          # 扩散也不能把别的会话的私有记忆拉进来
                 continue
             cur = scored.setdefault(nid, {"rel": 0.0, "sparse": 0.0, "dense": 0.0})
             cur["graph"] = g

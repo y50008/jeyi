@@ -534,6 +534,57 @@ def test_dense_hybrid_recalls_paraphrase():
     print(f"ok  稠密语义召回（饮料 → {top}，cos={hits[0][1]:.3f}）")
 
 
+def test_session_scope_isolates():
+    """一个会话的私有记忆，换会话必须看不见；跨会话的长期记忆照样可见。
+
+    这是"干扰"的第一道闸：上个会话里的临时方案，不该在下个会话被翻出来注入。
+    """
+    ag = MemoryHooks(session="S1")
+    ag.remember("本次先做登录页，下周再排期", scope="session")
+    ag.on_message("我对花生过敏")
+    in_s1 = ag.before_reply("登录页 排期 花生 过敏")
+    assert "登录页" in in_s1["pack"], "本会话的私有记忆必须可见"
+
+    ag.set_session("S2")
+    r = ag.before_reply("登录页 排期 花生 过敏")
+    assert "花生" in r["pack"], "跨会话的长期记忆换会话后仍应可见"
+    assert "登录页" not in r["pack"], f"别的会话的私有记忆不该漏进来: {r['pack']!r}"
+    assert ag.stats()["session_scoped"] == 1
+    print("ok  v4.4 会话作用域隔离（私有记忆不跨会话，长期记忆照常）")
+
+
+def test_cross_session_merge():
+    """多个会话说同一件事 = 同一张卡，不是多张。
+
+    隔离管"能不能被看见"，同一性管"是不是同一条"——两者正交，必须同时成立。
+    """
+    ag = MemoryHooks(session="S1")
+    ag.on_message("我对花生过敏")
+    node = next(n for n in ag.brain.nodes.values() if "花生" in n.label)
+    assert node.sessions == ["S1"] and len(ag.brain.nodes) == 1
+
+    ag.set_session("S2")
+    ag.on_message("我对花生过敏")          # 同一事实，换个会话又说一次
+    assert len(ag.brain.nodes) == 1, "同一事实不该在第二个会话里重新建卡"
+    node = next(n for n in ag.brain.nodes.values() if "花生" in n.label)
+    assert set(node.sessions) == {"S1", "S2"}, f"应记录两个会话，实际 {node.sessions}"
+    assert len(node.mentions) >= 2, "跨会话复述应累计到同一条卡上"
+    assert ag.stats()["cross_session"] == 1
+    assert ag.stats()["cross_session_merges"] >= 1
+    print(f"ok  v4.4 跨会话同一性合并（sessions={node.sessions}，置信 {node.confidence}）")
+
+
+def test_session_scoped_temporary_cue():
+    """「本次 / 这轮 / 这段对话」这类说法自动落成会话私有，不需要调用方操心。"""
+    ag = MemoryHooks(session="S1")
+    ag.on_message("我本次先按这个方案来")
+    n = next(iter(ag.brain.nodes.values()))
+    assert n.scope == "session", "显式的临时性说法应自动私有"
+    ag.on_message("我对花生过敏")
+    assert any(n.scope == "user" for n in ag.brain.nodes.values())
+    print("ok  v4.4 临时性说法自动归为会话私有")
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items()) if n.startswith("test_")]
     failed = 0

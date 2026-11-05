@@ -18,6 +18,11 @@ from .lang import extract_entities, find_date, has_commitment
 
 TYPES = ("event", "fact", "skill", "lesson", "reflection", "rule", "self")
 SLICES = ("working", "active", "archive")
+# 记忆作用域：
+#   user    —— 跨会话的长期记忆（"我对花生过敏"），任何会话都可见
+#   session —— 只属于产生它的那个会话（"这次先做登录页"），换个会话就看不见
+# 隔离与同一性是两个正交的维度：scope 管"能不能被看见"，sessions 管"是不是同一条"。
+SCOPES = ("user", "session")
 EDGE_TYPES = ("temporal", "causal", "cooccur", "rhyme", "conflict", "entail", "entity", "topic")
 CONFIDENCE = {"user": 0.9, "agent": 0.45, "web": 0.4, "system": 0.8}
 
@@ -64,6 +69,9 @@ class Node:
     review: bool = False                              # 冲突候选，待复核
     last_injected: float = 0.0
     version: int = 1
+    # ---- v4.4：记忆作用域与跨会话同一性 ----
+    scope: str = "user"                               # user=跨会话长期 / session=只在本会话可见
+    sessions: list = field(default_factory=list)      # 这条记忆在哪些会话里被确认过
 
     def __post_init__(self):
         if self.origin in CONFIDENCE:
@@ -72,10 +80,16 @@ class Node:
             self.gist = self.label
         if self.type not in TYPES:
             self.type = "fact"
+        if self.scope not in SCOPES:
+            self.scope = "user"
+        if not self.sessions and self.session:
+            self.sessions = [self.session]
 
-    def touch(self, t: float = None):
+    def touch(self, t: float = None, session: str = None):
         self.mentions.append(t or now())
         self.hits += 1
+        if session and session not in self.sessions:
+            self.sessions.append(session)
 
 
 class Brain:
@@ -164,6 +178,8 @@ class Brain:
             kw["id"] = f"n{self._seq:03d}"
             self._seq += 1
         n = Node(**kw)
+        if n.session and n.session not in n.sessions:
+            n.sessions.insert(0, n.session)
         self.nodes[n.id] = n
         self.adj.setdefault(n.id, [])
         if not n.mentions:
@@ -231,11 +247,16 @@ class Brain:
         return self.adj.get(nid, [])
 
     # ------------------------------------------------------------ 状态机
-    def mention(self, nid: str, t: float = None):
+    def mention(self, nid: str, t: float = None, session: str = None):
+        """被提起 = 一次复述。session 记进 sessions，用于"这条记忆在几个会话里被确认过"。"""
         n = self.nodes.get(nid)
         if not n:
             return
-        n.touch(t)
+        before = len(n.sessions)
+        n.touch(t, session=session)
+        if len(n.sessions) > before:
+            # 跨会话确认：同一条事实在另一个会话里又出现，可信度小幅上调
+            n.confidence = min(0.97, round(n.confidence + 0.02, 3))
         self._dirty.add(nid)
 
     def set_status(self, nid: str, status: str, reason: str = None):
@@ -264,7 +285,9 @@ class Brain:
                              importance=max(0.7, old.importance),
                              about_person=old.about_person,
                              gist=new_fact, verbatim=[new_fact],
-                             supersedes=old.id, sources=[old.id, who])
+                             supersedes=old.id, sources=[old.id, who],
+                             scope=old.scope, session=old.session,
+                             sessions=list(old.sessions))
         self._touch(newn, feedback_until=now() + DAY)
         self.add_edge(old.id, newn.id, "conflict", 0.9)
         return newn, "ok"

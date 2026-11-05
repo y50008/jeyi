@@ -24,7 +24,7 @@ from . import settle as st
 from .lang import (tokenize, expand, jaccard, split_clauses, is_question, is_hypothetical,
                    is_hearsay, has_commitment, has_correction_cue, sentiment,
                    extract_entities, extract_names, find_date, strip_filler, strip_tail,
-                   is_planned, has_recall_cue)
+                   is_planned, has_recall_cue, is_ephemeral)
 
 INJECT_CHARS = packer.INJECT_CHARS
 MAX_PER_MSG = 3
@@ -39,19 +39,45 @@ _SOCIAL = ("你", "咱们", "最近", "怎么样", "在吗", "在不在", "谢�
 
 class MemoryHooks:
     def __init__(self, store_dir=None, storage=None, embedding=None, judge=None,
-                 budget: int = INJECT_CHARS, session: str = "S1"):
+                 budget: int = INJECT_CHARS, session: str = "S1", user: str = "default"):
         self.brain = Brain(store_dir, storage=storage)
         self.scorer = Scorer(self.brain, embedding=embedding)
         self.judge = judge if judge is not None else HeuristicJudge()
         self.persona = Persona()
         self.budget = budget
         self.session = session
+        self.user = user
         self.session_new: list[str] = []
         self.session_seen: dict[str, int] = {}
         self.pending: list[str] = []
         self._last_node: str = None
         self._known_names: set[str] = set()
-        self._stats = {"turns": 0, "injected_items": 0, "injected_chars": 0, "suppressed": 0}
+        self._stats = {"turns": 0, "injected_items": 0, "injected_chars": 0,
+                       "suppressed": 0, "cross_session_merges": 0,
+                       "session_scoped": 0}
+
+    # ------------------------------------------------------------ 会话切换
+    def set_session(self, session: str):
+        """切到新的会话。
+
+        会话级注入去重表清空（新会话的"已在上下文里"要从零算），
+        但记忆本身留着——跨会话的长期记忆照样可见，会话私有的自动隐身。
+        """
+        if session and session != self.session:
+            self.session = session
+            self.session_seen.clear()
+            self.brain.turn = 0
+        return self.session
+
+    def _visible_scopes(self) -> set:
+        return {self.session}
+
+    def _rehearse(self, n) -> None:
+        """同一条记忆再次被确认：记下是哪个会话，跨会话则上调一点置信度。"""
+        before = len(n.sessions)
+        self.brain.mention(n.id, session=self.session)
+        if len(n.sessions) > before:
+            self._stats["cross_session_merges"] += 1
 
     # ------------------------------------------------------------ ① 写入
     def on_message(self, text: str, origin="user") -> list:
@@ -82,14 +108,17 @@ class MemoryHooks:
 
     def remember(self, text: str, *, origin: str = "user", session: str = None,
                  at: float = None, importance: float = 0.55, about_person: bool = True,
-                 entities=None, dedup: bool = True, link: bool = True):
+                 entities=None, dedup: bool = True, link: bool = True,
+                 scope: str = "user"):
         """直通写入：跳过中文抽取启发式，把一段文本原样存成一条记忆。
 
         用途：外部语料导入（英文基准）、结构化数据落库、从别的记忆系统迁移。
         `on_message` 是"从聊天里小心翼翼地猜"，`remember` 是"我确定这条要记"。
 
-        at: 指定创建时间（外部语料的会话日期），会影响衰减与显式回忆的排序。
+        at:    指定创建时间（外部语料的会话日期），会影响衰减与显式回忆的排序。
         dedup: 导入基准时置 False，保证"一条输入 = 一个节点"，证据映射不会错位。
+        scope: "user"=跨会话长期；"session"=只在本会话可见（临时方案/一次性上下文）。
+               去重命中时不会新建节点，而是把"这个会话也确认过"记到 sessions 上。
         """
         text = (text or "").strip()
         if not text:
@@ -97,7 +126,7 @@ class MemoryHooks:
         if dedup:
             dup = self._find_duplicate(tokenize(text), text)
             if dup is not None:
-                self.brain.mention(dup.id)
+                self._rehearse(dup)
                 return dup.id
         ts = at or clock.now()
         kw = {}
@@ -108,7 +137,9 @@ class MemoryHooks:
             importance=importance, about_person=about_person,
             verbatim=[text[:200]],
             entities=entities if entities is not None else extract_entities(text),
-            session=session or self.session, sources=["import"], **kw)
+            session=session or self.session, sources=["import"], scope=scope, **kw)
+        if scope == "session":
+            self._stats["session_scoped"] += 1
         if link:
             self._link(n.id, [n.id])
         self._last_node = n.id
@@ -129,7 +160,7 @@ class MemoryHooks:
         # ---- 指纹去重：重复表述 = 复述，不重复建卡 ----
         dup = self._find_duplicate(toks, clause)
         if dup is not None:
-            self.brain.mention(dup.id)
+            self._rehearse(dup)
             return None
         feel = sentiment(clause)
         due, _raw = find_date(clause)
@@ -156,7 +187,10 @@ class MemoryHooks:
             importance=round(min(0.95, imp), 2), about_person=True,
             verbatim=[clause[:120]], feeling=feeling, due_at=(due or 0.0),
             entities=extract_entities(clause), session=self.session,
+            scope=("session" if is_ephemeral(clause) else "user"),
             sources=["auto-extract"])
+        if node.scope == "session":
+            self._stats["session_scoped"] += 1
         self._known_names.update(extract_names(clause))
         return node
 
@@ -247,7 +281,8 @@ class MemoryHooks:
         # 显式回忆（「你还记得…吗」）允许翻归档；常规对话不翻，避免被陈年记忆淹没
         recall_mode = has_recall_cue(context)
         ranked = self.scorer.rank(context, k=k, mood=self.persona.mood.value(),
-                                  include_archive=recall_mode)
+                                  include_archive=recall_mode,
+                                  scopes=self._visible_scopes())
         rel_map = {r["id"]: r["decomp"]["rel"] for r in ranked}
         social = any(w in context for w in _SOCIAL) or len(qtoks) == 0
         p = packer.build(self.brain, ranked, qtoks=qtoks, budget=self.budget,
@@ -257,7 +292,7 @@ class MemoryHooks:
         # 只对真正进入注入包的节点计复述（v3 把没注入的也算，污染 ACT-R）
         now = clock.now()
         for nid in p["used"]:
-            self.brain.mention(nid, now)
+            self.brain.mention(nid, now, session=self.session)
             self.brain.nodes[nid].last_injected = now
             self.session_seen[nid] = self.brain.turn
             self.brain._dirty.add(nid)
@@ -289,7 +324,8 @@ class MemoryHooks:
         terms = _RECALL.findall(agent_text or "")
         hits: list[str] = []
         for term in terms:
-            for r in self.scorer.rank(term, k=3, include_archive=True):
+            for r in self.scorer.rank(term, k=3, include_archive=True,
+                                   scopes=self._visible_scopes()):
                 if r["id"] not in hits:
                     hits.append(r["id"])
         self.pending = (self.pending + hits)[:6]
@@ -300,11 +336,16 @@ class MemoryHooks:
         slices = {"working": 0, "active": 0, "archive": 0}
         status = {"live": 0, "superseded": 0, "overturned": 0}
         memory_chars = 0
+        session_scoped = cross_session = 0
         for n in self.brain.nodes.values():
             slices[n.slice] = slices.get(n.slice, 0) + 1
             status[n.status] = status.get(n.status, 0) + 1
             if n.status == "live":
                 memory_chars += len(n.gist) + len(n.verbatim[0] if n.verbatim else "")
+            if n.scope == "session":
+                session_scoped += 1
+            if len(n.sessions) > 1:
+                cross_session += 1
         edges = sum(len(v) for v in self.brain.adj.values()) // 2
         turns = max(1, self._stats["turns"])
         avg_chars = self._stats["injected_chars"] / turns
@@ -315,6 +356,13 @@ class MemoryHooks:
             "avg_inject_chars": round(avg_chars, 1),
             "compression": round(memory_chars / max(1.0, avg_chars), 1),
             "suppression": self._stats["suppressed"],
+            # 作用域与跨会话同一性：session_scoped 只在本会话可见；
+            # cross_session 是"在 ≥2 个会话里被确认过"的记忆（同一性合并的证据）
+            "session": self.session,
+            "session_scoped": session_scoped,
+            "cross_session": cross_session,
+            # 写入去重时跨会话命中的次数（注入侧的会话记录不算在这里）
+            "cross_session_merges": self._stats["cross_session_merges"],
             "mood": round(self.persona.mood.value(), 3),
             "traits": {k: v.state for k, v in self.persona.traits.items()},
         }

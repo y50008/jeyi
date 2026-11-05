@@ -1,4 +1,4 @@
-# 设计说明书 · memory-brain-agent v4.3
+# 设计说明书 · memory-brain-agent v4.4
 
 > 人工重构的辅助蓝图。逐模块对照重写，行为以 `tests/test_brain.py` 为验收标准。
 > 哲学：发现现成的，超越现成的——超越必须接受检验。
@@ -8,7 +8,7 @@
 ## 软件基本信息
 
 - 全称：memory-brain-agent 记忆脑图引擎
-- 版本：4.3.0
+- 版本：4.4.0
 - 开发目的：为对话型 AI Agent 提供类人长期记忆，用固定的极小上下文预算（≤300 字/轮）
   承载长期经历，并保证可检索、可改口、可审计、可遗忘
 - 运行环境：Python 3.10+，零第三方依赖
@@ -174,17 +174,22 @@ OpenAI 兼容 embedding/LLM、启发式冲突复核（阈值 0.45，走统一分
 | supersedes / overturn_reason | str | 状态机留痕 |
 | feedback_until | float | 24h 强插截止 |
 | review / last_injected / version | bool/float/int | 冲突待复核；上次注入时间；版本号 |
+| **scope** | enum | user=跨会话长期 / session=只在本会话可见（隔离的闸门） |
+| **sessions** | list | 这条记忆在哪些会话里被确认过（跨会话同一性的证据） |
 
 ## 五、接口契约
 
 ```python
 ag = MemoryHooks(store_dir=..., storage=..., embedding=..., judge=..., budget=300)
 ag.on_message(text, origin="user") -> [node_id]      # 写入（可能为空）
+ag.set_session(session_id) -> session_id             # 切会话（清注入去重表，保留记忆）
+ag.remember(text, scope="user"|"session") -> node_id # 直通写入（导入/明确要记的事）
 ag.before_reply(context, k=8) -> {"pack", "ranked", "cites", "candidates", "dropped", "chars"}
 ag.on_proactive(cap=2) -> [(触发, node_id)]
 ag.on_session_end() -> [日志]
 ag.handle_turn(agent_text) -> [node_id]              # 解析 [[recall: 词]]
 ag.stats() -> {slices, status, nodes, edges, memory_chars,
+               session, session_scoped, cross_session, cross_session_merges,
                avg_inject_chars, compression, suppression, mood, traits}
 ```
 

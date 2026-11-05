@@ -206,6 +206,15 @@ def has_correction_cue(text: str) -> bool:
 # 显式回忆线索：出现这些说法时，检索要允许翻归档（"遗忘=可及性下降，不是可用性消失"）
 RECALL_CUES = ("还记得", "记得吗", "你记得", "以前", "曾经", "那次", "上次", "当初",
                "最早", "刚开始", "说起过", "回忆", "老早", "第一次")
+# "会话内私有"标记：这类话只对这个会话成立，换会话就不该再被翻出来。
+# 只收 unambiguous 的说法——"暂时/这次"太容易误判（"我这次考了驾照"是长期事实）。
+EPHEMERAL_CUES = ("本次", "本轮", "这次讨论", "这个会话", "这段对话", "先这样")
+
+
+def is_ephemeral(text: str) -> bool:
+    return any(w in (text or "") for w in EPHEMERAL_CUES)
+
+
 def has_recall_cue(text: str) -> bool:
     return any(w in (text or "") for w in RECALL_CUES)
 

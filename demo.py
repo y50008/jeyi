@@ -87,7 +87,21 @@ show("⑥ 五步结算")
 for line in ag.on_session_end():
     print("  " + line)
 
-show("⑦ 指标（全部是实测值，不再有 'working*120 + active*45' 这种拍出来的数）")
+show("⑦ 会话作用域与跨会话同一性")
+ag4 = MemoryHooks(session="S1")
+ag4.remember("先做登录页，下周再排期", scope="session")   # 会话私有
+ag4.on_message("我对花生过敏")                            # 跨会话长期
+ag4.set_session("S2")                                     # 换会话
+r4 = ag4.before_reply("登录页 排期 花生 过敏")
+print("  S2 注入：" + (r4["pack"].replace("\n", " / ") or "(空)"))
+print("  → 花生（长期）在，登录页（S1 私有）不在：",
+      ("花生" in r4["pack"]) and ("登录页" not in r4["pack"]))
+ag4.on_message("我对花生过敏")                            # 同一事实，第二个会话又说一次
+st4 = ag4.stats()
+print(f"  跨会话同一性：nodes={st4['nodes']}（同一事实仍是 1 张卡） "
+      f"cross_session={st4['cross_session']}（在 ≥2 个会话被确认过）")
+
+show("⑧ 指标（全部是实测值，不再有 ''working*120 + active*45'' 这种拍出来的数）")
 for k, v in ag.stats().items():
     print(f"  {k}: {v}")
 
