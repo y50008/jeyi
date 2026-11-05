@@ -275,7 +275,7 @@ class MemoryHooks:
             self.brain.add_edge(nid, self._last_node, "temporal", 0.25)
 
     # ------------------------------------------------------------ ② 检索 + 选包
-    def before_reply(self, context: str, k: int = 8) -> dict:
+    def before_reply(self, context: str, k: int = 8, stateless: bool = False) -> dict:
         self.brain.turn += 1
         qtoks = expand(tokenize(context))
         # 显式回忆（「你还记得…吗」）允许翻归档；常规对话不翻，避免被陈年记忆淹没
@@ -285,8 +285,11 @@ class MemoryHooks:
                                   scopes=self._visible_scopes())
         rel_map = {r["id"]: r["decomp"]["rel"] for r in ranked}
         social = any(w in context for w in _SOCIAL) or len(qtoks) == 0
+        # stateless=True：每轮都要完整卡片（外部系统重建系统提示），不做会话内去重。
+        # 默认 False：对话式调用，模型上下文里已经有的不重复烧 token。
+        seen = {} if stateless else self.session_seen
         p = packer.build(self.brain, ranked, qtoks=qtoks, budget=self.budget,
-                         session_seen=self.session_seen, pending=self.pending,
+                         session_seen=seen, pending=self.pending,
                          social=social, rel_map=rel_map, allow_archive=recall_mode)
         self.pending = []
         # 只对真正进入注入包的节点计复述（v3 把没注入的也算，污染 ACT-R）
@@ -294,7 +297,8 @@ class MemoryHooks:
         for nid in p["used"]:
             self.brain.mention(nid, now, session=self.session)
             self.brain.nodes[nid].last_injected = now
-            self.session_seen[nid] = self.brain.turn
+            if not stateless:
+                self.session_seen[nid] = self.brain.turn
             self.brain._dirty.add(nid)
         self._stats["turns"] += 1
         self._stats["injected_items"] += len(p["used"])

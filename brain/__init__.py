@@ -13,7 +13,7 @@ from .adapters import (HashingEmbedding, OpenAICompatibleEmb, cosine,
                        HeuristicJudge, OpenAICompatibleLLM)
 from .lang import tokenize, jaccard
 
-__version__ = "4.4.0"
+__version__ = "4.5.0"
 __all__ = [
     "Brain", "Node", "Scorer", "Index", "Persona", "Mood", "MemoryHooks",
     "settle", "resonate", "build_pack", "tokenize", "jaccard",

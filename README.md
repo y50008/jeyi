@@ -1,4 +1,4 @@
-memory-brain-agent · v4.4 记忆脑图引擎
+memory-brain-agent · v4.5 记忆脑图引擎
 ========================================
 哲学：发现现成的，超越现成的——**超越必须接受检验**。
 
@@ -10,7 +10,7 @@ memory-brain-agent · v4.4 记忆脑图引擎
 每一次回复只注入 ≤300 字的记忆（不随对话历史增长），
 换来的是一条可检索、可衰减、可改口、可审计的记忆图谱。
 
-v4.4 的核心变化：**"打分/选包"重做成可测量的检索系统**，补上 v3.1.1 缺失的检验
+v4.5 的核心变化：**"打分/选包"重做成可测量的检索系统**，补上 v3.1.1 缺失的检验
 （主集 + 留出集 + 一年时间线三套），并在不牺牲弃答的前提下把留出集从 77.8% 提到 85.2%。
 
 先看数字（合成语料，见 docs/VALIDATION.md 的诚实声明）
@@ -88,7 +88,7 @@ LongMemEval 的记忆是自包含陈述。我们的记忆写成自包含的 gist
 但**显式回忆（"你还记得…吗"）能把 18/18 全部取回**——这份记忆卡永远在。
 两条承诺分别在到期前一天被主动提起（`2026-01-09`、`2026-02-28`）。
 
-会话作用域与跨会话同一性（v4.4）
+会话作用域与跨会话同一性（v4.5）
 --------------------------------
 "避免会话之间互相干扰"要同时解决两件事，它们是正交的：
 
@@ -113,6 +113,30 @@ r = ag.before_reply("登录页 花生")
 
 不用手动标：`我本次…/我本轮…/这段对话…` 这类说法自动落成会话私有。
 隔离对三条检索路径同时生效（词法、稠密、**图扩散**）——漏掉任何一条都等于没隔离。
+
+接入大肥鱼（dsh-identity，v4.5）
+----------------------------
+[dsh-identity](https://github.com/Anarrogantcat/dsh-identity)（MIT，「大肥鱼 · 身份系统」）
+自带一套记忆实现，没有留插拔点。但我们**不需要它配合**：它的 lib/memory.js 是一组具名导出，
+换掉这一个文件就能只替换"哪几条记忆进上下文"这一层，index.js 一行不改。
+
+`ash
+# 1. 起引擎（另开终端或开机自启）
+python -m brain.serve --port 8765 --store ./data/peers --dense
+# 2. 把桥装进大肥鱼
+cd <dsh-identity>/lib && mv memory.js memory.orig.js
+cp <memory-brain>/integration/dsh-identity/memory.bridge.js ./memory.js
+cp <memory-brain>/integration/dsh-identity/memory.fetch-worker.mjs ./
+# 3. 用大肥鱼真实的 memory.js 做对照验证
+python tools/verify_fish_bridge.py --fish <dsh-identity 包目录> --dense
+`
+
+实测（跑的是它自己的模块和存储）：**原实现 3/4，桥接 4/4**——
+多跳问句「我家猫身体有什么问题」原实现返回空，因为我们把「猫→团子→海鲜过敏」
+用图扩散接上了；弃答、面板接口（listMemory/memoryStats/forgetMemory）全部保持。
+
+引擎挂了不影响大肥鱼：桥接在 30 秒内自动退回原实现。
+细节与三个集成坑见 [integration/dsh-identity/README.md](integration/dsh-identity/README.md)。
 
 快速开始
 --------
