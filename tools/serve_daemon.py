@@ -23,6 +23,8 @@ import subprocess
 import sys
 import time
 
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from jeyi.console import ensure_utf8
 
 ensure_utf8()
