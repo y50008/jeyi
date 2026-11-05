@@ -80,6 +80,41 @@ class MemoryHooks:
         self.session_new.extend(found)
         return found
 
+    def remember(self, text: str, *, origin: str = "user", session: str = None,
+                 at: float = None, importance: float = 0.55, about_person: bool = True,
+                 entities=None, dedup: bool = True, link: bool = True):
+        """直通写入：跳过中文抽取启发式，把一段文本原样存成一条记忆。
+
+        用途：外部语料导入（英文基准）、结构化数据落库、从别的记忆系统迁移。
+        `on_message` 是"从聊天里小心翼翼地猜"，`remember` 是"我确定这条要记"。
+
+        at: 指定创建时间（外部语料的会话日期），会影响衰减与显式回忆的排序。
+        dedup: 导入基准时置 False，保证"一条输入 = 一个节点"，证据映射不会错位。
+        """
+        text = (text or "").strip()
+        if not text:
+            return None
+        if dedup:
+            dup = self._find_duplicate(tokenize(text), text)
+            if dup is not None:
+                self.brain.mention(dup.id)
+                return dup.id
+        ts = at or clock.now()
+        kw = {}
+        if at:
+            kw = {"created": at, "mentions": [at]}
+        n = self.brain.add_node(
+            label=text[:80], gist=text[:160], type="fact", origin=origin,
+            importance=importance, about_person=about_person,
+            verbatim=[text[:200]],
+            entities=entities if entities is not None else extract_entities(text),
+            session=session or self.session, sources=["import"], **kw)
+        if link:
+            self._link(n.id, [n.id])
+        self._last_node = n.id
+        self.session_new.append(n.id)
+        return n.id
+
     def _make_node(self, clause: str, origin: str):
         toks = tokenize(clause)
         if not toks:

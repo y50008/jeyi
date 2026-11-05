@@ -28,19 +28,25 @@ EXPAND_W = 1.0          # 别名扩展词权重。实测降到 0.5 反而掉主�
 DENSE_TOP_K = 50        # 稠密召回条数
 DENSE_FLOOR = 0.58      # 纯稠密命中进候选的最低余弦（按弃答分布标定）
 DENSE_RRF_K = 10        # RRF 平滑常数：越小越看重头部名次
+# 稠密票权 < 1：两路检索器不是同等可靠。词法在"有原词"时几乎不会错，
+# 稠密在"没原词"时才发光；等权 RRF 会让稠密的误判推翻词法的正确第 1 名
+# （LoCoMo 实测：等权 50.5% < 词法 54.2% < 加权 0.5 的 55.1%）。
+DENSE_WEIGHT = 0.5
 
 
-def _rrf(rank_a, rank_b, k: int = DENSE_RRF_K) -> float:
-    """Reciprocal Rank Fusion，归一化到 [0,1]（两路都排第 1 时为 1.0）。
+def _rrf(rank_a, rank_b, k: int = None, w_dense: float = None) -> float:
+    """加权 Reciprocal Rank Fusion，归一化到 [0,1]（两路都排第 1 时为 1.0）。
 
     为什么不用分数融合：稠密余弦与 tf-idf 余弦不在一个尺度上，
     取 max 会让稠密单方面覆盖词法的正确排序（主集实测 96.2 → 86.8）。
-    RRF 只看名次：词法很自信时（第 1 名），稠密的异议推不倒它；
-    词法完全失明时（没有候选），稠密第 1 名直接拿到 0.5。
+    为什么还要加权：稠密单独在 LoCoMo 上只有 30.6%（词法 54.2%），
+    给它同等票权就是让它拖后腿。
     """
+    k = DENSE_RRF_K if k is None else k
+    w_dense = DENSE_WEIGHT if w_dense is None else w_dense
     s = (1.0 / (k + rank_a)) if rank_a else 0.0
-    d = (1.0 / (k + rank_b)) if rank_b else 0.0
-    return (s + d) * (k + 1) / 2.0
+    d = (w_dense / (k + rank_b)) if rank_b else 0.0
+    return (s + d) * (k + 1) / (1.0 + w_dense)
 
 
 SPREAD_DECAY = 0.6      # 逐跳衰减
@@ -185,8 +191,14 @@ class Scorer:
         parts = []
         for s in (n.gist, n.label):
             s = (s or "").strip()
-            if s and s not in parts:
-                parts.append(s)
+            if not s:
+                continue
+            # 一条是另一条的前缀时只留长的（导入的节点 label=text[:80]、gist=text[:160]）
+            if any(s == p or s.startswith(p) or p.startswith(s) for p in parts):
+                if parts and len(s) > len(parts[0]):
+                    parts[0] = s
+                continue
+            parts.append(s)
         for e in (n.entities or [])[:3]:
             if e and e not in parts and e not in n.gist:
                 parts.append(e)

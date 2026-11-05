@@ -1,0 +1,34 @@
+name: external
+# 手动触发：要下载公开基准（LoCoMo 2.8MB / LongMemEval 278MB），不适合每次 push
+on:
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: "locomo 或 longmemeval"
+        default: "locomo"
+
+jobs:
+  external:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install dense extras
+        run: pip install -e ".[dense]"
+      - name: fetch model (en, 24MB) + dataset
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, ".")
+          from brain import dense
+          dense.download(kind="en")
+          PY
+          python tools/fetch_bench.py --dataset ${{ github.event.inputs.dataset }}
+      - name: lexical baseline
+        run: python tools/bench_external.py --dataset ${{ github.event.inputs.dataset }} --limit 50
+      - name: dense hybrid
+        run: >
+          python tools/bench_external.py --dataset ${{ github.event.inputs.dataset }}
+          --dense --lang en --limit 50

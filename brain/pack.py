@@ -26,6 +26,7 @@ RECALL_COOLDOWN_TURNS = 8   # 超长会话中允许重新注入的轮次间隔
 MAX_GRAPH_ONLY = 1          # 每轮最多允许几条"纯靠图扩散"进来的记忆（锦上添花，不喧宾夺主）
 
 ORIGIN_MARK = {"user": "·", "system": "§", "agent": "~", "web": "?"}
+LINE_MAX = 90            # 单条记忆的最大字符数
 
 
 def _line(brain, n, now, qtoks) -> str:
@@ -33,9 +34,16 @@ def _line(brain, n, now, qtoks) -> str:
 
     归档记忆用 ↩ 前缀标记——它是"很久没提起但确实记得"的东西，
     让模型可以用过去时/保留语气提起，而不是当成刚发生的事。
+
+    行长硬上限：记忆行是**指针**不是全文。中文 gist 通常 20~40 字，碰不到上限；
+    但英文对话一轮 100~300 字符，不截断的话 300 字预算只装得下 2 条，
+    第一条无关的就能把预算吃光（LoCoMo 实测投递率比 rank@5 低 16 个点）。
     """
     mark = ORIGIN_MARK.get(n.origin, "~")
-    body = n.gist or n.label
+    body = (n.gist or n.label).strip()
+    if len(body) > LINE_MAX:
+        cut = body[:LINE_MAX].rstrip(" ，,、.;；")
+        body = cut + "…"
     line = (f"↩{mark}" if n.slice == "archive" else mark) + body
     # 通道2：原话锚点 —— 只在"查询更贴近原话"或"这是纠错卡"时附带，
     # 平时不带（避免每轮多烧 20-40 字）。这是 v3 里 verbatim 永远到不了模型的修复。

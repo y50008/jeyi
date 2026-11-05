@@ -1,4 +1,4 @@
-memory-brain-agent · v4.2 记忆脑图引擎
+memory-brain-agent · v4.3 记忆脑图引擎
 ========================================
 哲学：发现现成的，超越现成的——**超越必须接受检验**。
 
@@ -10,7 +10,7 @@ memory-brain-agent · v4.2 记忆脑图引擎
 每一次回复只注入 ≤300 字的记忆（不随对话历史增长），
 换来的是一条可检索、可衰减、可改口、可审计的记忆图谱。
 
-v4.2 的核心变化：**"打分/选包"重做成可测量的检索系统**，补上 v3.1.1 缺失的检验
+v4.3 的核心变化：**"打分/选包"重做成可测量的检索系统**，补上 v3.1.1 缺失的检验
 （主集 + 留出集 + 一年时间线三套），并在不牺牲弃答的前提下把留出集从 77.8% 提到 85.2%。
 
 先看数字（合成语料，见 docs/VALIDATION.md 的诚实声明）
@@ -58,6 +58,20 @@ ag = MemoryHooks(embedding=dense.make_embedder())   # 装不上就返回 None，
 ```
 不装也完全能跑——`brain/dense.py` 只在依赖与模型都在位时才加载，核心库保持零依赖。
 
+公开基准（语料由外人提供，`tools/bench_external.py`）
+----------------------------------------------------
+测检索层（证据有没有被找回），不测问答（那要 LLM 判分）。
+
+| 基准 | 词法 | + 稠密 |
+|------|------|--------|
+| **LoCoMo**（英文，1986 问，证据是"某一轮对话"） | 48.6% | **50.9%**（稠密只肯加不肯抢） |
+| **LongMemEval-S**（英文，50 问，证据是"整段会话"） | 92.0% | **96.0%**（等权可到 98.0） |
+
+同一个引擎、同一个模型，两个基准结论相反——差别在**记忆单元是否自包含**。
+LoCoMo 的每轮对话满是 "I'm really lucky to have them" 这种指代，单独抽出来做向量本来就缺信息；
+LongMemEval 的记忆是自包含陈述。我们的记忆写成自包含的 gist，属于后者。
+详见 docs/VALIDATION.md §三之五。
+
 长时程（`python tools/simulate.py`：把一年压进 3 秒）
 ----------------------------------------------------
 可注入时钟（`brain/clock.py`）让"半年后会发生什么"第一次变成可验证的东西：
@@ -82,6 +96,8 @@ python tests/test_brain.py     # 37 项测试（无 pytest 依赖）
 python tools/bench.py          # 检索质量基准（主集）：v3 基线 vs v4 vs 整段上下文
 python tools/bench.py --holdout# 留出集：泛化能力的诚实读数
 python tools/bench.py --dense --holdout  # 稠密混合（需先 setup_dense，venv 里跑）
+python tools/fetch_bench.py --dataset locomo       # 下公开基准（2.8MB）
+python tools/bench_external.py --dataset locomo --dense --lang en
 python tools/simulate.py       # 一年时间线：衰减/归档/到期提醒/显式回忆
 python tools/replay.py         # 多轮会话回放：看注入包与省下的 token
 python tools/export_map.py     # 导出真实脑图 → ui/brain_map_live.html（双击即看）
@@ -134,7 +150,7 @@ ag = MemoryHooks(storage=SqliteStorage("./data/brain.db"),
 | 模块 | 职责 | v4 关键点 |
 |------|------|-----------|
 | `brain/clock.py` | 唯一时间源 | 可注入虚拟时钟，长时程行为变成可验证 |
-| `brain/dense.py` | 稠密检索（可选） | 本地 ONNX 句向量 + numpy 向量索引；不装依赖时整层不加载 |
+| `brain/dense.py` | 稠密检索（可选） | 本地 ONNX 句向量（中/英两版）+ numpy 向量索引；不装依赖时整层不加载 |
 | `brain/lang.py` | 文本原语 | 全项目唯一分词器；中文二元组+内容字一元组+停用词 |
 | `brain/core.py` | 全图底座 | 节点/真实边/状态机/按天归档/三切片/`due_at` |
 | `brain/score.py` | 检索 | 倒排索引、tf-idf 余弦门控、**可用的**扩散激活与侧抑制、显式回忆 |
@@ -169,7 +185,7 @@ ag = MemoryHooks(storage=SqliteStorage("./data/brain.db"),
 ```
 brain/            引擎（clock/lang/core/score/pack/settle/hooks/storage/persona/adapters）
 tests/            36 项测试
-tools/            bench.py 基准 · simulate.py 一年模拟 · replay.py 回放
+tools/            bench.py 基准 · bench_external.py 公开基准 · fetch_bench.py 下载
                   export_map.py 导出脑图 · ci_gate.py 质量门禁
 ui/brain_map.html 脑图模板（无外部依赖）
 ui/brain_map_live.html  由引擎导出生成的真实脑图

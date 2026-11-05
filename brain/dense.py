@@ -19,10 +19,23 @@ import math
 import os
 import urllib.request
 
-DEFAULT_MODEL_DIR = os.path.join(
-    os.path.expanduser("~"), ".cache", "memory-brain", "bge-small-zh-v1.5")
+_CACHE_ROOT = os.path.join(os.path.expanduser("~"), ".cache", "memory-brain")
+
+# 同一套 bge-small 的两个语言版本，都是 24MB int8。
+# 关键：**模型语言必须和语料语言一致**。用中文模型跑英文基准，
+# 稠密几乎不涨分（LoCoMo 实测 48.6% → 49.0%），换英文同款才有意义。
+MODEL_REPOS = {
+    "zh": ("Xenova/bge-small-zh-v1.5", "bge-small-zh-v1.5"),
+    "en": ("Xenova/bge-small-en-v1.5", "bge-small-en-v1.5"),
+}
+DEFAULT_KIND = "zh"
+DEFAULT_MODEL_DIR = os.path.join(_CACHE_ROOT, MODEL_REPOS[DEFAULT_KIND][1])
 MODEL_FILES = ("model_int8.onnx", "model_quantized.onnx", "model.onnx")   # 由省到贵依次尝试
 _UA = {"User-Agent": "Mozilla/5.0 memory-brain/dense"}
+
+
+def model_dir_for(kind: str = DEFAULT_KIND) -> str:
+    return os.path.join(_CACHE_ROOT, MODEL_REPOS.get(kind, MODEL_REPOS[DEFAULT_KIND])[1])
 
 # bge 中文检索的查询指令前缀（s2p）。短问句上加前缀略掉点时收益为负，默认关闭，
 # 由 setup_dense.py 自检决定要不要开——见 tools/setup_dense.py 的 calibration。
@@ -202,14 +215,16 @@ def available() -> bool:
         return False
 
 
-def model_present(model_dir: str = DEFAULT_MODEL_DIR) -> bool:
+def model_present(model_dir: str = None, kind: str = DEFAULT_KIND) -> bool:
+    model_dir = model_dir or model_dir_for(kind)
     return (os.path.isdir(model_dir)
             and os.path.exists(os.path.join(model_dir, "tokenizer.json"))
             and any(os.path.exists(os.path.join(model_dir, n)) for n in MODEL_FILES))
 
 
-def make_embedder(model_dir: str = DEFAULT_MODEL_DIR, query_prefix: str = ""):
+def make_embedder(model_dir: str = None, query_prefix: str = "", kind: str = DEFAULT_KIND):
     """能装就装，装不上返回 None（引擎自动退回词法）。"""
+    model_dir = model_dir or model_dir_for(kind)
     if not available() or not model_present(model_dir):
         return None
     try:
@@ -218,15 +233,17 @@ def make_embedder(model_dir: str = DEFAULT_MODEL_DIR, query_prefix: str = ""):
         return None
 
 
-def download(model_dir: str = DEFAULT_MODEL_DIR, quantized: bool = True,
+def download(kind: str = DEFAULT_KIND, model_dir: str = None, quantized: bool = True,
              endpoint: str = "https://hf-mirror.com") -> str:
-    """下载 bge-small-zh-v1.5 的 ONNX 与 tokenizer（默认走 hf-mirror，国内可用）。
+    """下载 bge-small 的 ONNX 与 tokenizer（默认走 hf-mirror，国内可用）。
 
-    int8 量化版约 24MB、CPU 单句 3~8ms，精度相对 fp32 只差不到 1 个点——
+    kind: "zh"（中文语料）/ "en"（英文语料）——**跑什么语言的语料就用什么模型**。
+    int8 量化版约 24MB、CPU 单句 2.8ms，精度相对 fp32 只差不到 1 个点——
     "最实惠"就落在这一档：不要 GPU、不联网、不要 API key。
     """
+    repo, sub = MODEL_REPOS.get(kind, MODEL_REPOS[DEFAULT_KIND])
+    model_dir = model_dir or os.path.join(_CACHE_ROOT, sub)
     os.makedirs(model_dir, exist_ok=True)
-    repo = "Xenova/bge-small-zh-v1.5"
     files = ["tokenizer.json", "config.json"]
     model_file = "onnx/model_int8.onnx" if quantized else "onnx/model.onnx"
     files.append(model_file)

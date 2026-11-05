@@ -77,12 +77,34 @@ _WEEKDAY = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6
 
 
 # ---------------------------------------------------------------- 分词
+# 英文停用词：引擎接受英文文本（外部语料导入），但词法层是语言无关的 tf-idf，
+# 不滤掉 the/and/to 这些词，"今天天气"和"我昨天说过天气"会因为 the 而互相命中。
+EN_STOP = {
+    "the", "a", "an", "and", "or", "but", "if", "then", "than", "that", "this",
+    "these", "those", "of", "to", "in", "on", "at", "for", "from", "with", "by",
+    "as", "is", "are", "was", "were", "be", "been", "being", "am", "do", "does",
+    "did", "have", "has", "had", "will", "would", "can", "could", "should", "may",
+    "might", "must", "it", "its", "he", "she", "they", "them", "his", "her",
+    "their", "we", "us", "our", "you", "your", "i", "me", "my", "mine", "him",
+    "what", "which", "who", "whom", "when", "where", "why", "how", "there",
+    "here", "so", "not", "no", "yes", "all", "any", "some", "just", "very",
+    "too", "also", "about", "into", "over", "after", "before", "up", "down",
+    "out", "off", "again", "only", "more", "most", "other", "such", "own",
+    "same", "both", "each", "few", "many", "much", "now", "get", "got", "go",
+    "going", "went", "one", "two", "like", "really", "well", "still", "because",
+    "while", "during", "through", "between", "against", "under", "above", "s",
+    "t", "re", "ve", "ll", "d", "m",
+}
+
+
 def tokenize(text: str) -> list:
     """拉丁词 + 中文二元组 + 内容字一元组。返回带重复的 token 列表（tf 需要）。"""
     if not text:
         return []
     out = []
     for w in _LATIN.findall(text.lower()):
+        if w in EN_STOP:
+            continue
         if len(w) >= 2 or w.isdigit():
             out.append(w)
     for run in _CJK_RUN.findall(text):
