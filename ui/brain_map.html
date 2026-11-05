@@ -59,7 +59,7 @@
 <body>
 <canvas id="cv"></canvas><div id="vig"></div>
 <header>
-  <h1>记忆脑图</h1><small>v4.1 · 全图底座 + 动力学 · <span id="srcBadge">内置样例数据</span></small>
+  <h1>记忆脑图</h1><small>v4.6 · 全图底座 + 动力学 · <span id="srcBadge">内置样例数据</span></small>
   <input id="q" placeholder="检索演示：试试「遗忘」/「结算」/「超越」…">
   <button onclick="runQuery()">检索</button>
   <button onclick="settle()">结算</button>
@@ -316,5 +316,19 @@ const lg=document.getElementById("legend");
 lg.innerHTML=Object.keys(TC).map(k=>`<span class="dot" style="background:${TC[k]}"></span>${TN[k]} `).join("")+"<br>"+
   Object.keys(EC).map(k=>`<span style="color:${EC[k]}">—</span>${EN[k]} `).join("");
 updateStats();
+
+// 由 sidecar 实时托管时（window.__BRAIN_LIVE__）挂上刷新控件；静态打开不受影响
+if (window.__BRAIN_LIVE__) {
+  const bar = document.querySelector("header");
+  const btn = document.createElement("button");
+  btn.textContent = "刷新";
+  btn.title = "重新从引擎拉一次快照";
+  btn.onclick = () => location.reload();
+  bar.appendChild(btn);
+  const tip = document.createElement("small");
+  tip.textContent = "20s 自动刷新";
+  bar.appendChild(tip);
+  setTimeout(() => location.reload(), 20000);
+}
 </script>
 </body></html>

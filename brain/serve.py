@@ -32,6 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from brain import MemoryHooks, JsonlStorage          # noqa: E402
+from brain import viz                                 # noqa: E402
 
 DEFAULT_STORE = os.path.join(os.getcwd(), "data", "peers")
 
@@ -50,6 +51,29 @@ class PeerStore:
     def _safe(peer: str) -> str:
         keep = "".join(c if (c.isalnum() or c in "-_.@") else "_" for c in str(peer or "default"))
         return keep[:64] or "default"
+
+    def peers(self) -> list:
+        try:
+            return sorted(d for d in os.listdir(self.root)
+                          if os.path.isdir(os.path.join(self.root, d)))
+        except OSError:
+            return []
+
+    def pick(self, peer: str = "") -> str:
+        """没指定 peer 时取最近活跃的那个（面板打开就看最新的人）。"""
+        if peer:
+            return peer
+        best, best_t = "", -1.0
+        for p in self.peers():
+            d = os.path.join(self.root, p)
+            try:
+                t = max((os.path.getmtime(os.path.join(d, f)) for f in os.listdir(d)),
+                        default=0.0)
+            except OSError:
+                t = 0.0
+            if t > best_t:
+                best, best_t = p, t
+        return best or "default"
 
     def get(self, peer: str) -> MemoryHooks:
         key = self._safe(peer)
@@ -176,9 +200,35 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        if self.path == "/v1/health":
-            return self._send(200, {"ok": True, "service": "memory-brain", "version": "4.5"})
+        path = self.path.split("?", 1)[0]
+        if path == "/v1/health":
+            return self._send(200, {"ok": True, "service": "memory-brain", "version": "4.6"})
+        if path == "/v1/peers":
+            return self._send(200, {"ok": True, "peers": self.store.peers()})
+        if path == "/v1/graph":
+            peer = self.store.pick(self._query("peer"))
+            ag = self.store.get(peer)
+            data = viz.payload(ag)
+            return self._send(200, {"ok": True, **data})
+        if path in ("/", "/index.html"):
+            # 实时面板：每 peer 一张脑图，20 秒自动刷新
+            peer = self.store.pick(self._query("peer"))
+            ag = self.store.get(peer)
+            html = viz.render_html(viz.payload(ag), live=True)
+            body = html.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         return self._send(404, {"ok": False, "error": "not found"})
+
+    def _query(self, name: str) -> str:
+        if "?" not in self.path:
+            return ""
+        from urllib.parse import parse_qs
+        return (parse_qs(self.path.split("?", 1)[1]).get(name) or [""])[0]
 
     def do_POST(self):
         if self.token:

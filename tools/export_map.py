@@ -62,62 +62,13 @@ def load_store(path):
 
 
 def export(ag, out_path):
-    sess_ids = {}
-    for n in ag.brain.nodes.values():
-        sess_ids.setdefault(n.session, len(sess_ids) + 1)
-    sess = [{"id": k, "label": f"切片 · 会话 {i}"} for k, i in sess_ids.items()]
-
-    nodes = []
-    for n in ag.brain.nodes.values():
-        nodes.append({
-            "id": n.id, "label": n.label, "type": n.type, "slice": n.slice,
-            "imp": round(n.importance, 2), "sess": n.session,
-            "gist": n.gist,
-            "vb": (n.verbatim or [])[:3],
-            "feel": ({"label": n.feeling.get("label", ""),
-                      "why": n.feeling.get("why", ""),
-                      "valid_at": n.feeling.get("valid_at", "")}
-                     if n.feeling else None),
-            "src": (n.sources or [])[:4] or ["auto-extract"],
-        })
-    edges = []
-    seen = set()
-    for a, lst in ag.brain.adj.items():
-        for b, et, w in lst:
-            key = tuple(sorted((a, b))) + (et,)
-            if key in seen:
-                continue
-            seen.add(key)
-            edges.append([a, b, et, round(w, 2)])
-
-    st = ag.stats()
-    payload = {
-        "meta": {
-            "version": __version__,
-            "nodes": len(nodes),
-            "edges": len(edges),
-            "avg_inject_chars": st.get("avg_inject_chars", 0),
-            "compression": st.get("compression", 0),
-            "exported": time.strftime("%Y-%m-%d %H:%M"),
-            "note": "数据来自引擎导出",
-        },
-        "sess": sess,
-        "nodes": nodes,
-        "edges": edges,
-    }
-
-    with open(os.path.join(ROOT, "ui", "brain_map.html"), encoding="utf-8") as f:
-        html = f.read()
-    blob = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
-    inject = f"<script>window.__BRAIN__={blob};</script>\n"
-    idx = html.find("<script>")
-    if idx < 0:
-        raise SystemExit("模板里找不到 <script> 标签")
-    html = html[:idx] + inject + html[idx:]
+    """引擎快照 → 自包含 HTML。与 sidecar 的实时面板共用 brain/viz.py。"""
+    from brain import viz
+    data = viz.payload(ag)
+    html = viz.render_html(data, live=False)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
-    return payload
-
+    return data
 
 def main():
     args = sys.argv[1:]

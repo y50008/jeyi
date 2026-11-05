@@ -29,3 +29,6 @@ Thumbs.db
 # 稠密模型（缓存在用户目录，不进仓库）
 *.onnx
 *.onnx.part
+
+# 发布产物（zip 用 tools/package_release.py 现打）
+dist/
