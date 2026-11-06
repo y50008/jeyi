@@ -32,3 +32,6 @@ Thumbs.db
 
 # 发布产物（zip 用 tools/package_release.py 现打）
 dist/
+# 个人数据的导出产物（含本机记忆内容，不进仓库）
+ui/dsh_memory_map.html
+docs/dsh-panel.png

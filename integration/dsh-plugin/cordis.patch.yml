@@ -1,0 +1,13 @@
+# jeyi-dsh bundle patch：装一个记忆条目。
+# 安装方式见 README：把本包 link 进 profile，再在 profile 的 cordis.patch.yml 里
+# 写一条同样内容的 - insert（或把本 bundle 加进 dsh.profile.bundles）。
+- insert:
+    - id: jeyi-memory
+      name: jeyi-dsh
+      config:
+        url: http://127.0.0.1:8770
+        peer: dsh
+        budget: 300
+        inject: true
+        remember: true
+        timeoutMs: 600

@@ -128,6 +128,25 @@ RESULT orig=3/4 bridge=4/4 card_ok=true listed=6 => OK
 
 **引擎挂了不影响大肥鱼**：桥接 30 秒内自动退回原实现。
 
+### 3.5 接 DeepSeek Harness（jeyi-dsh 插件）
+
+DSH 走的是 cordis 插件，不用改宿主任何文件。完整步骤、验证与卸载见
+[integration/dsh-plugin/README.md](../integration/dsh-plugin/README.md)，最短路径：
+
+```powershell
+# 1. 起引擎（8765 可能被百度输入法占用，换 8770）
+python tools\install_autostart.py --install --port 8770 --store <jeyi>\data\peers
+# 2. profile 里 link 插件
+New-Item -ItemType Junction "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\jeyi-dsh" `
+  -Target "<jeyi>\integration\dsh-plugin"
+# 3. profile 的 cordis.patch.yml 末尾加 - insert: jeyi-memory（见插件 README）
+```
+
+插件做三件事：每条用户消息抽取式写回、每次 prompt 组装召回 ≤300 字、把卡片作为
+**system prompt 的最后一节**注入（每步重渲染、历史不膨胀）。装完左侧栏会多一个
+**「记忆脑图」**入口：记忆列表、语义检索、脑图都在里面（数据走宿主的 `/jeyi-memory`
+同源代理，浏览器不直连侧车）。
+
 ## 四、开机自启与面板
 
 ### 4.1 一条命令装好
@@ -215,21 +234,26 @@ curl -X POST http://127.0.0.1:8765/v1/card   -d '{"peer":"u1","query":"今天聊
 
 | 接口 | 作用 |
 |------|------|
-| `POST /v1/add` | 写入一条记忆 |
+| `POST /v1/add` | 写入一条记忆（原样存，导入基准用） |
+| `POST /v1/message` | 对话写入（抽取式：问句/假设不入卡，只收第一人称事实） |
 | `POST /v1/recall` | 召回（可传 `dense_floor` 调阈值） |
 | `POST /v1/card` | 拿注入块（每轮重建用，无状态） |
 | `POST /v1/forget` | 遗忘（按 id 或关键词） |
 | `POST /v1/session` | 切会话（作用域隔离） |
-| `POST /v1/stats` | 指标 |
+| `POST /v1/stats` | 指标（含 `turns`、路由命中计数 `routes`） |
 | `GET /v1/graph` | 脑图数据（`?peer=`） |
 | `GET /` | 实时面板 |
 | `GET /v1/health` | 健康检查 |
+
+`add/message/recall/card` 都接受可选的 `session` 字段：按请求指定本次调用属于哪个会话，
+服务端按 peer 加锁，多会话并发时不会把会话私有记忆看串。
 
 ## 七、出问题怎么查
 
 | 现象 | 先看 | 处理 |
 |------|------|------|
 | 面板打不开 | `install_autostart.py --status` | 没起来就看 `~/.jeyi/logs/sidecar.log` |
+| 端口"在服务"但请求超时 | 端口被别的程序占了 | 8765 常被百度输入法占用，换 `--port 8770` |
 | 大肥鱼没变化 | 环境变量 `JEYI_URL` 指对了？ | 先 `curl /v1/health`，再跑 `verify_fish_bridge.py` |
 | 桥接后记忆变少 | 是不是引擎弃答了 | `POST /v1/recall` 带上 `"dense_floor":0.5` 试试 |
 | 稠密没生效 | `python -c "from jeyi import dense;print(dense.available(),dense.model_present())"` | 缺依赖或模型，重跑 `setup_dense.py` |

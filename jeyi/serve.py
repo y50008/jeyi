@@ -14,12 +14,16 @@ Node 那边用 `fetch` 调几行，我们的引擎一点不改。
     python -m jeyi.serve --port 8765 --store ./data/peers
 接口：
     GET  /v1/health
-    POST /v1/add     {peer, text, importance?, origin?, quote?, at?}
+    POST /v1/add     {peer, text, importance?, origin?, quote?, at?, session?}
+    POST /v1/message {peer, text, origin?, session?}   -> 抽取式对话写入（问句不入卡）
     POST /v1/recall  {peer, query, top?}          -> {items:[{id,text,score,C,P}]}
     POST /v1/card    {peer, query, budget?}       -> {card, used:[id], chars}
     POST /v1/forget  {peer, keyword}
     POST /v1/stats   {peer}
     POST /v1/session {peer, session}              -> 切会话（作用域隔离用）
+
+    session 字段：按请求指定本次调用属于哪个会话（不写就沿用当前会话）。
+    服务端按 peer 加锁，两个会话并发时不会把彼此的会话私有记忆看串。
 """
 from __future__ import annotations
 import argparse
@@ -50,6 +54,20 @@ class PeerStore:
         self.embedding = embedding
         self._engines: dict[str, MemoryHooks] = {}
         self._lock = threading.Lock()
+        # 每个 peer 一把操作锁：会话是按请求传进来的，两个 DSH 会话并发时
+        # 不能让 A 的 set_session 和 B 的检索交错（否则 A 会看见 B 的会话私有记忆）。
+        self._op_locks: dict[str, threading.RLock] = {}
+        self._op_guard = threading.Lock()
+        # 路由命中计数：排查"插件到底有没有在调我"时最省事。
+        self.counts: dict[str, int] = {}
+
+    def op_lock(self, peer: str) -> threading.RLock:
+        key = self._safe(peer)
+        with self._op_guard:
+            lk = self._op_locks.get(key)
+            if lk is None:
+                lk = self._op_locks[key] = threading.RLock()
+            return lk
 
     @staticmethod
     def _safe(peer: str) -> str:
@@ -92,20 +110,43 @@ class PeerStore:
             return ag
 
 
+def _session_of(body: dict) -> str:
+    """调用方按请求带进来的会话 id（空 = 沿用当前会话）。"""
+    return (body.get("session") or "").strip()
+
+
 def _op_add(store: PeerStore, body: dict) -> dict:
     ag = store.get(body.get("peer"))
     text = (body.get("text") or "").strip()
     if not text:
         return {"ok": False, "error": "empty text"}
-    nid = ag.remember(
-        text,
-        origin=body.get("origin") or "user",
-        at=float(body["at"]) if body.get("at") else None,
-        importance=float(body.get("importance") or 0.55),
-        scope=body.get("scope") or "user",
-        dedup=body.get("dedup", True),
-    )
-    return {"ok": True, "id": nid, "nodes": len(ag.brain.nodes)}
+    with store.op_lock(body.get("peer")):
+        sess = _session_of(body)
+        if sess:
+            ag.set_session(sess)
+        nid = ag.remember(
+            text,
+            origin=body.get("origin") or "user",
+            at=float(body["at"]) if body.get("at") else None,
+            importance=float(body.get("importance") or 0.55),
+            scope=body.get("scope") or "user",
+            dedup=body.get("dedup", True),
+        )
+        return {"ok": True, "id": nid, "nodes": len(ag.brain.nodes)}
+
+
+def _op_message(store: PeerStore, body: dict) -> dict:
+    """对话写入：走 on_message 的中文抽取（问句/假设不入卡，只收第一人称事实）。"""
+    ag = store.get(body.get("peer"))
+    text = (body.get("text") or "").strip()
+    if not text:
+        return {"ok": False, "error": "empty text"}
+    with store.op_lock(body.get("peer")):
+        sess = _session_of(body)
+        if sess:
+            ag.set_session(sess)
+        ids = ag.on_message(text, origin=body.get("origin") or "user")
+        return {"ok": True, "ids": ids, "nodes": len(ag.brain.nodes)}
 
 
 def _op_recall(store: PeerStore, body: dict) -> dict:
@@ -122,7 +163,11 @@ def _op_recall(store: PeerStore, body: dict) -> dict:
     if floor is not None:
         _score.DENSE_FLOOR = max(0.30, min(0.90, float(floor)))
     try:
-        ranked = ag.scorer.rank(q, k=top, scopes=ag._visible_scopes())
+        with store.op_lock(body.get("peer")):
+            sess = _session_of(body)
+            if sess:
+                ag.set_session(sess)
+            ranked = ag.scorer.rank(q, k=top, scopes=ag._visible_scopes())
     finally:
         _score.DENSE_FLOOR = old
     items = []
@@ -141,12 +186,17 @@ def _op_recall(store: PeerStore, body: dict) -> dict:
 
 def _op_card(store: PeerStore, body: dict) -> dict:
     ag = store.get(body.get("peer"))
-    if body.get("budget"):
-        ag.budget = max(60, min(2000, int(body["budget"])))
     q = (body.get("query") or "").strip()
     # stateless：大肥鱼每轮重建系统提示，必须每轮都给完整卡片（不做会话内去重）
-    res = ag.before_reply(q or "最近怎么样", stateless=True)
-    return {"ok": True, "card": res["pack"], "used": res["cites"], "chars": res["chars"]}
+    with store.op_lock(body.get("peer")):
+        if body.get("budget"):
+            ag.budget = max(60, min(2000, int(body["budget"])))
+        sess = _session_of(body)
+        if sess:
+            ag.set_session(sess)
+        res = ag.before_reply(q or "最近怎么样", stateless=True)
+    return {"ok": True, "card": res["pack"], "used": res["cites"], "chars": res["chars"],
+            "session": ag.session}
 
 
 def _op_forget(store: PeerStore, body: dict) -> dict:
@@ -173,13 +223,17 @@ def _op_session(store: PeerStore, body: dict) -> dict:
 
 def _op_stats(store: PeerStore, body: dict) -> dict:
     ag = store.get(body.get("peer"))
-    st = ag.stats()
+    with store.op_lock(body.get("peer")):
+        st = ag.stats()
+        st["turns"] = ag._stats["turns"]
+    st["routes"] = dict(store.counts)
     st["ok"] = True
     return st
 
 
 ROUTES = {
     "/v1/add": _op_add,
+    "/v1/message": _op_message,
     "/v1/recall": _op_recall,
     "/v1/card": _op_card,
     "/v1/forget": _op_forget,
@@ -195,9 +249,27 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):      # 静默：别把每轮请求刷到终端
         pass
 
+    def _cors(self):
+        """只放行本机来源：任何网页都能读本地记忆是隐私事故，外站 Origin 一律不给。"""
+        origin = (self.headers.get("Origin") or "").strip()
+        ok = (origin.startswith("http://127.0.0.1:") or origin.startswith("http://localhost:")
+              or origin.startswith("http://[::1]:"))
+        if ok:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Headers", "content-type, x-memory-token")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._cors()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _send(self, code: int, payload: dict):
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
+        self._cors()
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -223,6 +295,7 @@ class Handler(BaseHTTPRequestHandler):
             html = viz.render_html(viz.payload(ag), live=True)
             body = html.encode("utf-8")
             self.send_response(200)
+            self._cors()
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -250,6 +323,8 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, UnicodeDecodeError) as e:
             return self._send(400, {"ok": False, "error": f"bad json: {e}"})
         try:
+            with self.store._op_guard:
+                self.store.counts[self.path] = self.store.counts.get(self.path, 0) + 1
             return self._send(200, fn(self.store, body))
         except Exception as e:                       # 绝不 500 到对方脸上
             return self._send(200, {"ok": False, "error": f"{type(e).__name__}: {e}"})

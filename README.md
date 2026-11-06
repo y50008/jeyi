@@ -1,4 +1,4 @@
-jeyi · v5.0 记忆脑图引擎
+jeyi · v5.1 记忆脑图引擎
 ========================================
 
 [![ci](https://github.com/y50008/jeyi/actions/workflows/ci.yml/badge.svg)](https://github.com/y50008/jeyi/actions/workflows/ci.yml)
@@ -18,6 +18,7 @@ python tests/test_jeyi.py     # 40/40
 想要更高召回：pip install -e ".[dense]" && python tools/setup_dense.py（24MB 本地模型）。
 
 - **介绍**（这是什么、和别的方案比、数字怎么读）→ [docs/INTRO.md](docs/INTRO.md)
+- **装进 DeepSeek Harness**（左栏「记忆脑图」入口 + 自动注入）→ [docs/INSTALL-DSH.md](docs/INSTALL-DSH.md)
 - **安装使用**（装、跑、接大肥鱼、开机自启、排错）→ [docs/INSTALL.md](docs/INSTALL.md)
 
 这是什么
@@ -158,6 +159,26 @@ python tools/verify_fish_bridge.py --fish <dsh-identity 包目录> --dense
 引擎挂了不影响大肥鱼：桥接在 30 秒内自动退回原实现。
 细节与三个集成坑见 [integration/dsh-identity/README.md](integration/dsh-identity/README.md)。
 
+接入 DeepSeek Harness（jeyi-dsh 插件）
+-------------------------------------
+DSH 是模板化的 cordis 宿主，**不用改它任何文件**：装一个插件，记忆卡片每轮作为
+system prompt 的最后一节注入（每步重渲染、不进历史，所以历史长度不随轮数涨）。
+
+```powershell
+python tools\install_autostart.py --install --port 8770   # 8765 常被百度输入法占用
+New-Item -ItemType Junction "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\jeyi-dsh" `
+  -Target "<jeyi>\integration\dsh-plugin"
+# 再往 profile 的 cordis.patch.yml 末尾加 - insert: jeyi-memory（配置见插件 README）
+```
+
+插件做三件事：`/v1/message` 抽取式写回（问句不入卡）、`/v1/card` 按本轮问题召回、
+召回非空时追加 `jeyi:memory` 一节；同时在**左侧栏加「记忆脑图」入口**，点开能看记忆列表、
+按语义检索、看脑图（面板走宿主的 `/jeyi-memory` 同源代理，不依赖 CORS）。
+引擎不在线就静默跳过，对话不受影响。
+
+**完整安装指南 → [docs/INSTALL-DSH.md](docs/INSTALL-DSH.md)**（五步、验证、排错、卸载）。
+实现细节与实测记录见 [integration/dsh-plugin/README.md](integration/dsh-plugin/README.md)。
+
 快速开始
 --------
 ```bash
@@ -254,12 +275,15 @@ ag = MemoryHooks(storage=SqliteStorage("./data/brain.db"),
 ----
 ```
 jeyi/            引擎（clock/lang/core/score/pack/settle/hooks/storage/persona/adapters）
-tests/            36 项测试
+tests/           40 项测试
 tools/            bench.py 基准 · bench_external.py 公开基准 · fetch_bench.py 下载
                   export_map.py 导出脑图 · ci_gate.py 质量门禁
+integration/dsh-identity/   大肥鱼桥接（桥 + worker + 验证 + 说明）
+integration/dsh-plugin/     DeepSeek Harness 插件（宿主 + 浏览器面板 + 3 个单测）
 ui/map.html 脑图模板（无外部依赖）
 ui/map_live.html  由引擎导出生成的真实脑图
 demo.py           端到端演示
+docs/INSTALL-DSH.md  装进 DSH 的五步指南
 ```
 
 血缘与许可

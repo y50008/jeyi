@@ -79,14 +79,18 @@ def read_config() -> dict:
 def write_vbs():
     os.makedirs(startup_dir(), exist_ok=True)
     py = python_exe()
-    cmd = f'"{py}" "{DAEMON}"'
+    # VBScript 字符串里嵌入引号要写成两个引号：sh.Run """C:\py.exe"" ""x.py"""
+    # （旧实现少写了外层引号，WScript 会报"语句未结束 800A0401"——v5.0 实测过。）
+    cmd = f'"""{py}"" ""{DAEMON}"""'
     content = (
         "' jeyi 记忆侧车：登录时静默启动（删掉本文件即可取消自启）\r\n"
         'Set sh = CreateObject("WScript.Shell")\r\n'
         f'sh.CurrentDirectory = "{ROOT}"\r\n'
-        f'sh.Run "{cmd}", 0, False\r\n'
+        f'sh.Run {cmd}, 0, False\r\n'
     )
-    with open(vbs_path(), "w", encoding="utf-8", newline="") as f:
+    # Windows Script Host 只认 ANSI 或 UTF-16LE(BOM)。项目路径含中文时，
+    # UTF-8 无 BOM 会被按 GBK 解码成乱码，自启静默失败（v5.0 实测过）。
+    with open(vbs_path(), "w", encoding="utf-16", newline="") as f:
         f.write(content)
 
 
